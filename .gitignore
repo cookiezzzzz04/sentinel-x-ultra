@@ -97,3 +97,8 @@ frontend/.vite/
 api_keys.json
 secrets.json
 *.secret
+
+# User-specific configuration (API keys, agent configs)
+.sentinel-x/
+providers.json
+agent_models.json

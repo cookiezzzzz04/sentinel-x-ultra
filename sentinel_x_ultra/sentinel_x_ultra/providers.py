@@ -426,6 +426,9 @@ class OpenRouterProvider(BaseLLMProvider):
         if not config.base_url:
             config.base_url = "https://openrouter.ai/api/v1"
         super().__init__(config)
+        # OpenRouter requires these headers for API access
+        self.client.headers["HTTP-Referer"] = "https://sentinel-x.app"
+        self.client.headers["X-Title"] = "Sentinel X Ultra"
 
     async def complete(
         self,
@@ -444,7 +447,7 @@ class OpenRouterProvider(BaseLLMProvider):
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        response = await self.client.post("/chat/completions", json=payload)
+        response = await self.client.post("/v1/chat/completions", json=payload)
         response.raise_for_status()
         data = response.json()
 

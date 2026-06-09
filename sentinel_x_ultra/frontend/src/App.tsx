@@ -13,11 +13,9 @@ interface HealthStatus {
   providers: string[]
 }
 
-interface ModelConfig {
-  reasoning: string
-  code: string
-  embedding: string
-  report: string
+// Per-agent model configuration
+interface AgentModelConfig {
+  [agentId: string]: string
 }
 
 // ProviderModels - for future use when we add per-project provider configs
@@ -31,11 +29,25 @@ function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
+  const [configuredProviders, setConfiguredProviders] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchHealth()
     fetchProjects()
+    fetchConfiguredProviders()
   }, [])
+
+  const fetchConfiguredProviders = async () => {
+    try {
+      const res = await fetch('/api/config/providers')
+      const data = await res.json()
+      if (data.providers) {
+        setConfiguredProviders(new Set(data.providers))
+      }
+    } catch (e) {
+      console.error('Failed to fetch configured providers:', e)
+    }
+  }
 
   const fetchHealth = async () => {
     try {
@@ -134,11 +146,13 @@ function App() {
         ) : currentProject ? (
           <ProjectView project={currentProject} onBack={() => { setCurrentProject(null); setView('dashboard') }} />
         ) : view === 'settings' ? (
-          <SetupView health={health} />
+          <SetupView configuredProviders={configuredProviders} onProviderConfigured={(providerId) => {
+            setConfiguredProviders(prev => new Set([...prev, providerId]))
+          }} />
         ) : view === 'dashboard' ? (
           <Dashboard projects={projects} onCreateProject={createProject} onDeleteProject={deleteProject} onOpenProject={openProject} />
         ) : view === 'models' ? (
-          <ModelConfigView health={health} />
+          <ModelConfigView configuredProviders={configuredProviders} />
         ) : null}
       </main>
 
@@ -505,7 +519,10 @@ function Dashboard({ projects, onCreateProject, onDeleteProject, onOpenProject }
 }
 
 // ============ SETUP VIEW ============
-function SetupView(_props: { health: HealthStatus | null }) {
+function SetupView({ configuredProviders, onProviderConfigured }: { 
+  configuredProviders: Set<string>;
+  onProviderConfigured: (providerId: string) => void;
+}) {
   const [selectedProvider, setSelectedProvider] = useState('openai')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
@@ -515,16 +532,61 @@ function SetupView(_props: { health: HealthStatus | null }) {
   const [isTesting, setIsTesting] = useState(false)
 
   const providers = [
-    { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', placeholder: 'sk-...', models: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'] },
-    { id: 'anthropic', name: 'Anthropic', defaultUrl: 'https://api.anthropic.com', placeholder: 'sk-ant-api...', models: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'] },
-    { id: 'groq', name: 'Groq', defaultUrl: 'https://api.groq.com/openai/v1', placeholder: 'gsk_...', models: ['llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'] },
-    { id: 'openrouter', name: 'OpenRouter', defaultUrl: 'https://openrouter.ai/api/v1', placeholder: 'sk-or-...', models: ['meta-llama/llama-3.1-8b-instant', 'anthropic/claude-3.5-sonnet', 'google/gemini-pro', 'mistralai/mistral-small'] },
-    { id: 'ollama', name: 'Ollama (Local)', defaultUrl: 'http://localhost:11434/v1', placeholder: 'not-required', models: ['llama3.1', 'codellama', 'mistral', 'phi3'] },
-    { id: 'lmstudio', name: 'LM Studio', defaultUrl: 'http://localhost:1234/v1', placeholder: 'not-required', models: ['auto', 'llama3.1', 'codellama'] },
-    { id: 'vllm', name: 'vLLM', defaultUrl: 'http://localhost:8000/v1', placeholder: 'not-required', models: ['llama3.1', 'mixtral'] },
-    { id: 'gemini', name: 'Google Gemini', defaultUrl: 'https://generativelanguage.googleapis.com', placeholder: 'AIza...', models: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'] },
-    { id: 'mistral', name: 'Mistral AI', defaultUrl: 'https://api.mistral.ai/v1', placeholder: '...', models: ['mistral-small-latest', 'mistral-large-latest', 'mistral-medium'] },
-    { id: 'opencode', name: 'OpenCode', defaultUrl: 'http://localhost:8080/v1', placeholder: 'not-required', models: ['auto'] },
+    { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', placeholder: 'sk-...', models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-4-turbo', 'gpt-4-turbo-2024-04-09', 'gpt-4', 'gpt-4-0613', 'gpt-4-32k', 'gpt-4-32k-0613', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'gpt-3.5-turbo-0613', 'o1', 'o1-mini', 'o1-preview', 'o3-mini', 'o3'] },
+    { id: 'anthropic', name: 'Anthropic', defaultUrl: 'https://api.anthropic.com', placeholder: 'sk-ant-api...', models: [
+      'claude-fable-5', 'claude-mythos-5', 'claude-opus-4.8', 'claude-sonnet-4.6', 'claude-haiku-4.5',
+      'claude-3.5-opus', 'claude-3.5-sonnet-20241022', 'claude-3.5-sonnet-20240620', 'claude-3.5-haiku-20241022',
+      'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307',
+      'claude-2.1', 'claude-2.0', 'claude-instant-1.2'
+    ] },
+    { id: 'groq', name: 'Groq', defaultUrl: 'https://api.groq.com/openai/v1', placeholder: 'gsk_...', models: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'whisper-large-v3', 'whisper-large-v3-turbo', 'groq/compound', 'groq/compound-mini', 'meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3-32b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openai/gpt-oss-safeguard-20b', 'meta-llama/llama-prompt-guard-2-86m'] },
+    { id: 'openrouter', name: 'OpenRouter', defaultUrl: 'https://openrouter.ai/api/v1', placeholder: 'sk-or-...', models: [
+      // Special OpenRouter models
+      'openrouter/auto', 'openrouter/free',
+      // Meta LLama models (most reliable on OpenRouter)
+      'meta-llama/llama-3.3-70b-instruct', 'meta-llama/llama-3.1-8b-instant', 'meta-llama/llama-3.1-70b-instruct',
+      // Google models
+      'google/gemini-2.0-flash-exp', 'google/gemini-2.0-flash',
+      // Anthropic models (via OpenRouter)
+      'anthropic/claude-3.5-sonnet', 'anthropic/claude-3.5-sonnet-20240620',
+      // Mistral models
+      'mistralai/mistral-small', 'mistralai/mistral-medium',
+      // DeepSeek models
+      'deepseek/deepseek-chat', 'deepseek/deepseek-coder',
+      // Qwen models
+      'qwen/qwen2.5-72b-instruct', 'qwen/qwen2.5-coder-32b',
+      // Other popular models
+      'cohere/command-r-plus', 'cohere/command-r',
+      'x-ai/grok-2', 'x-ai/grok-2-mini',
+      'perplexity/sonar', 'perplexity/sonar-pro',
+      'microsoft/phi-4', 'snowflake/snowflake-arctic-instruct',
+      'databricks/dbrx-instruct',
+    ] },
+    { id: 'ollama', name: 'Ollama (Local)', defaultUrl: 'http://localhost:11434/v1', placeholder: 'not-required', models: ['llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'codellama2', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi3.5', 'phi4', 'gemma2', 'gemma2:27b', 'gemma', 'qwen2.5', 'qwen2.5-coder', 'qwen2.5-math', 'yi', 'yi-coder', 'yi2', 'deepseek-coder', 'deepseek-llm', 'command-r', 'command-r7b', 'llava', 'llava-llama3', 'bakllava', 'nomic-embed-text', 'all-minimum', 'shawj/neural-chat', 'zephyr', 'embd-01', 'eagle', 'fastchat', 'orca2', 'vicuna'] },
+    { id: 'lmstudio', name: 'LM Studio', defaultUrl: 'http://localhost:1234/v1', placeholder: 'not-required', models: ['auto', 'llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'codellama2', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi4', 'gemma2', 'qwen2.5', 'qwen2.5-coder', 'yi', 'yi2', 'deepseek-coder', 'deepseek-llm', 'command-r', 'stablelm', 'smollm', 'gemma2:27b', 'qwen2.5-math'] },
+    { id: 'vllm', name: 'vLLM', defaultUrl: 'http://localhost:8000/v1', placeholder: 'not-required', models: ['auto', 'llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi4', 'qwen2.5', 'qwen2.5-coder', 'yi', 'yi2', 'deepseek-llm', 'gemma2', 'command-r'] },
+    { id: 'gemini', name: 'Google Gemini', defaultUrl: 'https://generativelanguage.googleapis.com', placeholder: 'AIza...', models: [
+      'gemini-3.5-pro', 'gemini-3.5-flash', 'gemini-spark', 'gemini-omni',
+      'gemini-3.1-pro', 'gemini-3.1-flash-lite', 'gemini-3-flash', 'gemini-3-ultra',
+      'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+      'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-nano'
+    ] },
+    { id: 'mistral', name: 'Mistral AI', defaultUrl: 'https://api.mistral.ai/v1', placeholder: '...', models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'mistral-nemo', 'mistral-hoder', 'codestral', 'codestral-latest', 'mistral-embed', 'open-mistral-7b', 'open-mixtral-8x7b', 'open-mixtral-8x22b'] },
+    { id: 'opencode', name: 'OpenCode', defaultUrl: 'http://localhost:8080/v1', placeholder: 'not-required', models: [
+      'big-pickle', 'stealth',
+      'claude-fable-5', 'claude-haiku-4.5', 'claude-opus-4.1', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.7', 'claude-opus-4.8', 'claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6',
+      'gpt-5', 'gpt-5-codex', 'gpt-5-nano', 'gpt-5.1', 'gpt-5.1-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.4-pro', 'gpt-5.5', 'gpt-5.5-pro',
+      'gemini-3-flash', 'gemini-3.1-pro', 'gemini-3.5-flash',
+      'deepseek-v4-flash', 'deepseek-v4-flash-free', 'deepseek-v4-pro',
+      'glm-5', 'glm-5.1',
+      'kimi-k2.5', 'kimi-k2.6',
+      'qwen3.5-plus', 'qwen3.6-plus', 'qwen3.6-plus-free', 'qwen3.7-plus', 'qwen3.7-max',
+      'grok-build-0.1',
+      'minimax-m2.5', 'minimax-m2.7', 'minimax-m3-free', 'minimax-m3',
+      'mimo-v2.5-pro', 'mimo-v2.5-free',
+      'nemotron-3-ultra-free',
+      'north-mini-code-free'
+    ] },
   ]
 
   const currentProvider = providers.find(p => p.id === selectedProvider) || providers[0]
@@ -553,6 +615,7 @@ function SetupView(_props: { health: HealthStatus | null }) {
       const data = await res.json()
       if (data.status === 'ok') {
         setSaved(true)
+        onProviderConfigured(selectedProvider)
         setTimeout(() => setSaved(false), 2000)
       }
     } catch (e) {
@@ -766,20 +829,31 @@ function SetupView(_props: { health: HealthStatus | null }) {
           <div style={{ background: '#12121a', borderRadius: '16px', padding: '24px', border: '1px solid #1a1a2e' }}>
             <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Available Providers</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {providers.map(p => (
-                <div key={p.id} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px',
-                  background: selectedProvider === p.id ? 'rgba(0, 212, 255, 0.1)' : '#1a1a2e',
-                  borderRadius: '8px',
-                  border: selectedProvider === p.id ? '1px solid #00d4ff' : '1px solid transparent'
-                }}>
-                  <span style={{ fontWeight: '500' }}>{p.name}</span>
-                  <span style={{ fontSize: '11px', color: '#4ade80' }}>● Configured</span>
-                </div>
-              ))}
+              {providers.map(p => {
+                const isConfigured = configuredProviders.has(p.id)
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px',
+                    background: selectedProvider === p.id ? 'rgba(0, 212, 255, 0.1)' : '#1a1a2e',
+                    borderRadius: '8px',
+                    border: selectedProvider === p.id ? '1px solid #00d4ff' : '1px solid transparent',
+                    opacity: isConfigured ? 1 : 0.5,
+                    cursor: isConfigured ? 'pointer' : 'not-allowed'
+                  }}
+                  onClick={() => isConfigured && setSelectedProvider(p.id)}
+                  >
+                    <span style={{ fontWeight: '500' }}>{p.name}</span>
+                    {isConfigured ? (
+                      <span style={{ fontSize: '11px', color: '#4ade80' }}>● Configured</span>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#666' }}>○ Not configured</span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -799,124 +873,347 @@ function SetupView(_props: { health: HealthStatus | null }) {
 }
 
 // ============ MODEL CONFIG VIEW ============
-function ModelConfigView({ health }: { health: HealthStatus | null }) {
-  const [config, setConfig] = useState<ModelConfig>({
-    reasoning: 'claude-3-5-sonnet-20241022',
-    code: 'claude-3-5-sonnet-20241022',
-    embedding: 'embed-english-v3.0',
-    report: 'claude-3-5-sonnet-20241022'
+function ModelConfigView({ configuredProviders }: { configuredProviders: Set<string> }) {
+  // Per-agent model configuration - each agent has its own model
+  const [agentConfigs, setAgentConfigs] = useState<AgentModelConfig>({
+    'recon': 'claude-3-5-sonnet-20241022',
+    'code-review': 'claude-3-5-sonnet-20241022',
+    'threat-modeling': 'claude-3-5-sonnet-20241022',
+    'dependency': 'claude-3-5-sonnet-20241022',
+    'debate': 'claude-3-5-sonnet-20241022',
+    'remediation': 'claude-3-5-sonnet-20241022'
   })
 
+  const [selectedModelProvider, setSelectedModelProvider] = useState<string>(Array.from(configuredProviders)[0] || 'groq')
+  const [loading, setLoading] = useState(true)
+  const [modelSearch, setModelSearch] = useState('')
+
+  // Load agent configs from backend on mount
+  useEffect(() => {
+    fetch('/api/config/agent-models')
+      .then(res => res.json())
+      .then(data => {
+        if (data.agents && Object.keys(data.agents).length > 0) {
+          setAgentConfigs(data.agents)
+        }
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('Failed to load agent configs:', err)
+        setLoading(false)
+      })
+  }, [])
+
+  // Get available models based on configured providers
+  const getModelsForProvider = (providerId: string): string[] => {
+    const providerModels: Record<string, string[]> = {
+      'openai': ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-4-turbo', 'gpt-4-turbo-2024-04-09', 'gpt-4', 'gpt-4-0613', 'gpt-4-32k', 'gpt-4-32k-0613', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'gpt-3.5-turbo-0613', 'o1', 'o1-mini', 'o1-preview', 'o3-mini', 'o3'],
+      'anthropic': [
+        'claude-fable-5', 'claude-mythos-5', 'claude-opus-4.8', 'claude-sonnet-4.6', 'claude-haiku-4.5',
+        'claude-3.5-opus', 'claude-3.5-sonnet-20241022', 'claude-3.5-sonnet-20240620', 'claude-3.5-haiku-20241022',
+        'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307',
+        'claude-2.1', 'claude-2.0', 'claude-instant-1.2'
+      ],
+      'groq': ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'whisper-large-v3', 'whisper-large-v3-turbo', 'groq/compound', 'groq/compound-mini', 'meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3-32b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openai/gpt-oss-safeguard-20b', 'meta-llama/llama-prompt-guard-2-86m'],
+      'openrouter': [
+        // Special OpenRouter models
+        'openrouter/auto', 'openrouter/free',
+        // Meta LLama models (most reliable on OpenRouter)
+        'meta-llama/llama-3.3-70b-instruct', 'meta-llama/llama-3.1-8b-instant', 'meta-llama/llama-3.1-70b-instruct',
+        // Google models
+        'google/gemini-2.0-flash-exp', 'google/gemini-2.0-flash',
+        // Anthropic models (via OpenRouter)
+        'anthropic/claude-3.5-sonnet', 'anthropic/claude-3.5-sonnet-20240620',
+        // Mistral models
+        'mistralai/mistral-small', 'mistralai/mistral-medium',
+        // DeepSeek models
+        'deepseek/deepseek-chat', 'deepseek/deepseek-coder',
+        // Qwen models
+        'qwen/qwen2.5-72b-instruct', 'qwen/qwen2.5-coder-32b',
+        // Other popular models
+        'cohere/command-r-plus', 'cohere/command-r',
+        'x-ai/grok-2', 'x-ai/grok-2-mini',
+        'perplexity/sonar', 'perplexity/sonar-pro',
+        'microsoft/phi-4', 'snowflake/snowflake-arctic-instruct',
+        'databricks/dbrx-instruct',
+      ],
+      'ollama': ['llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'codellama2', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi3.5', 'phi4', 'gemma2', 'gemma2:27b', 'gemma', 'qwen2.5', 'qwen2.5-coder', 'qwen2.5-math', 'yi', 'yi-coder', 'yi2', 'deepseek-coder', 'deepseek-llm', 'command-r', 'command-r7b', 'llava', 'llava-llama3', 'bakllava', 'nomic-embed-text', 'all-minimum', 'shawj/neural-chat', 'zephyr', 'embd-01', 'eagle', 'fastchat', 'orca2', 'vicuna'],
+      'lmstudio': ['auto', 'llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'codellama2', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi4', 'gemma2', 'qwen2.5', 'qwen2.5-coder', 'yi', 'yi2', 'deepseek-coder', 'deepseek-llm', 'command-r', 'stablelm', 'smollm', 'gemma2:27b', 'qwen2.5-math'],
+      'vllm': ['auto', 'llama3.3', 'llama3.2', 'llama3.2-vision', 'llama3.1', 'llama3', 'llama2', 'codellama', 'mistral', 'mistral-nemo', 'mixtral', 'phi3', 'phi4', 'qwen2.5', 'qwen2.5-coder', 'yi', 'yi2', 'deepseek-llm', 'gemma2', 'command-r'],
+      'gemini': [
+        'gemini-3.5-pro', 'gemini-3.5-flash', 'gemini-spark', 'gemini-omni',
+        'gemini-3.1-pro', 'gemini-3.1-flash-lite', 'gemini-3-flash', 'gemini-3-ultra',
+        'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+        'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-nano'
+      ],
+      'mistral': ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'mistral-nemo', 'mistral-hoder', 'codestral', 'codestral-latest', 'mistral-embed', 'open-mistral-7b', 'open-mixtral-8x7b', 'open-mixtral-8x22b'],
+      'opencode': [
+        'big-pickle', 'stealth',
+        'claude-fable-5', 'claude-haiku-4.5', 'claude-opus-4.1', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.7', 'claude-opus-4.8', 'claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6',
+        'gpt-5', 'gpt-5-codex', 'gpt-5-nano', 'gpt-5.1', 'gpt-5.1-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.4-pro', 'gpt-5.5', 'gpt-5.5-pro',
+        'gemini-3-flash', 'gemini-3.1-pro', 'gemini-3.5-flash',
+        'deepseek-v4-flash', 'deepseek-v4-flash-free', 'deepseek-v4-pro',
+        'glm-5', 'glm-5.1',
+        'kimi-k2.5', 'kimi-k2.6',
+        'qwen3.5-plus', 'qwen3.6-plus', 'qwen3.6-plus-free', 'qwen3.7-plus', 'qwen3.7-max',
+        'grok-build-0.1',
+        'minimax-m2.5', 'minimax-m2.7', 'minimax-m3-free', 'minimax-m3',
+        'mimo-v2.5-pro', 'mimo-v2.5-free',
+        'nemotron-3-ultra-free',
+        'north-mini-code-free'
+      ],
+    }
+    return providerModels[providerId] || []
+  }
+
+  const agents = [
+    { id: 'recon', name: '🎯 Recon Agent', description: 'Target discovery, port scanning, OSINT' },
+    { id: 'code-review', name: '🔍 Code Review Agent', description: 'SAST with security pattern detection' },
+    { id: 'threat-modeling', name: '🛡️ Threat Modeling Agent', description: 'Attack path analysis using knowledge graph' },
+    { id: 'dependency', name: '📦 Dependency Agent', description: 'Vulnerability scanning for dependencies' },
+    { id: 'debate', name: '⚖️ Debate Engine', description: '5-role adversarial finding validation' },
+    { id: 'remediation', name: '🔧 Remediation Agent', description: 'Automated remediation planning' },
+  ]
+
+  // Get available models for selected provider, filtered by search
+  const availableModels = getModelsForProvider(selectedModelProvider)
+  const filteredModels = modelSearch.trim() 
+    ? availableModels.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()))
+    : availableModels
+  
+  // Update a specific agent's model
+  const updateAgentModel = (agentId: string, model: string) => {
+    setAgentConfigs(prev => ({ ...prev, [agentId]: model }))
+  }
+
   const handleSave = async () => {
-    // TODO: Implement model config save endpoint
-    alert('Model configuration saved!')
+    try {
+      const res = await fetch('/api/config/agent-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agents: agentConfigs }),
+      })
+      const data = await res.json()
+      if (data.status === 'ok') {
+        alert('Agent configuration saved!')
+      } else {
+        alert('Failed to save: ' + (data.error || 'Unknown error'))
+      }
+    } catch (e) {
+      alert('Failed to save agent configuration')
+    }
   }
 
   return (
     <div>
-      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🤖 Model Configuration</h2>
-      <p style={{ color: '#666', marginBottom: '32px' }}>Configure which models to use for different task types</p>
+      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🤖 Agent Model Configuration</h2>
+      <p style={{ color: '#666', marginBottom: '32px' }}>Configure a specific model for each security agent</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        {/* Task-specific Models */}
-        <div style={{ background: '#12121a', borderRadius: '16px', padding: '24px', border: '1px solid #1a1a2e' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '20px' }}>Task Routing</h3>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <ModelConfigRow 
-              label="Reasoning & Analysis" 
-              description="Complex security analysis and decision making"
-              value={config.reasoning}
-              onChange={(v) => setConfig({...config, reasoning: v})}
-            />
-            <ModelConfigRow 
-              label="Code Analysis" 
-              description="SAST, vulnerability detection, code review"
-              value={config.code}
-              onChange={(v) => setConfig({...config, code: v})}
-            />
-            <ModelConfigRow 
-              label="Embeddings" 
-              description="Vector embeddings for RAG retrieval"
-              value={config.embedding}
-              onChange={(v) => setConfig({...config, embedding: v})}
-            />
-            <ModelConfigRow 
-              label="Report Generation" 
-              description="Findings documentation and reporting"
-              value={config.report}
-              onChange={(v) => setConfig({...config, report: v})}
-            />
-          </div>
-          
-          <button onClick={handleSave} style={{
-            marginTop: '24px',
-            background: 'linear-gradient(135deg, #00d4ff, #00ff88)',
-            color: '#000',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '12px 24px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            width: '100%'
-          }}>
-            Save Configuration
-          </button>
-        </div>
-
-        {/* Provider Status */}
-        <div style={{ background: '#12121a', borderRadius: '16px', padding: '24px', border: '1px solid #1a1a2e' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '20px' }}>Provider Status</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {health?.providers && health.providers.length > 0 ? (
-              health.providers.map((provider) => (
-                <div key={provider} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '16px',
-                  background: '#1a1a2e',
-                  borderRadius: '8px'
-                }}>
-                  <div>
-                    <span style={{ fontWeight: '600', textTransform: 'capitalize' }}>{provider}</span>
-                    <span style={{ fontSize: '12px', color: '#666', display: 'block' }}>Available</span>
-                  </div>
-                  <span style={{ fontSize: '20px' }}>✅</span>
-                </div>
+      {/* Provider Selection for Model Dropdown */}
+      <div style={{ background: '#12121a', borderRadius: '16px', padding: '24px', border: '1px solid #1a1a2e', marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Model Provider</h3>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={selectedModelProvider}
+            onChange={(e) => setSelectedModelProvider(e.target.value)}
+            disabled={configuredProviders.size === 0}
+            style={{
+              background: '#1a1a2e',
+              border: '1px solid #2a2a3e',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              color: configuredProviders.size === 0 ? '#666' : '#fff',
+              fontSize: '14px',
+              minWidth: '200px'
+            }}
+          >
+            {configuredProviders.size > 0 ? (
+              Array.from(configuredProviders).map(providerId => (
+                <option key={providerId} value={providerId}>{providerId.charAt(0).toUpperCase() + providerId.slice(1)}</option>
               ))
             ) : (
-              <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>No providers configured</p>
+              <option value="">No providers configured</option>
             )}
-          </div>
+          </select>
+          <input
+            type="text"
+            value={modelSearch}
+            onChange={(e) => setModelSearch(e.target.value)}
+            placeholder="Search models..."
+            style={{
+              background: '#1a1a2e',
+              border: '1px solid #2a2a3e',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              color: '#fff',
+              fontSize: '14px',
+              minWidth: '250px',
+              flex: 1
+            }}
+          />
+          <span style={{ fontSize: '12px', color: '#666' }}>
+            {configuredProviders.size > 0 
+              ? `Showing ${filteredModels.length} of ${availableModels.length} models from ${selectedModelProvider}`
+              : 'Configure a provider in Settings first'}
+          </span>
         </div>
       </div>
-    </div>
-  )
-}
 
-function ModelConfigRow({ label, description, value, onChange }: { label: string; description: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div style={{ background: '#1a1a2e', borderRadius: '8px', padding: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <label style={{ fontSize: '13px', fontWeight: '600' }}>{label}</label>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>Loading agent configurations...</div>
+      ) : (
+      /* Per-Agent Model Configuration */
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '16px' }}>
+        {agents.map(agent => (
+          <div key={agent.id} style={{
+            background: '#12121a',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid #1a1a2e'
+          }}>
+            {/* Agent Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ 
+                fontSize: '24px',
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#1a1a2e',
+                borderRadius: '10px'
+              }}>
+                {agent.name.split(' ')[0]}
+              </div>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600' }}>{agent.name}</div>
+                <div style={{ fontSize: '11px', color: '#666' }}>{agent.description}</div>
+              </div>
+            </div>
+            
+            {/* Model Selection for this Agent */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', color: '#888', fontSize: '12px' }}>Model</label>
+              {filteredModels.length > 0 ? (
+                <select
+                  value={agentConfigs[agent.id] || filteredModels[0]}
+                  onChange={(e) => updateAgentModel(agent.id, e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#1a1a2e',
+                    border: '1px solid #2a2a3e',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    color: '#00d4ff',
+                    fontSize: '13px',
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {filteredModels.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={agentConfigs[agent.id] || ''}
+                  onChange={(e) => updateAgentModel(agent.id, e.target.value)}
+                  placeholder="Enter model name..."
+                  style={{
+                    width: '100%',
+                    background: '#1a1a2e',
+                    border: '1px solid #2a2a3e',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    color: '#00d4ff',
+                    fontSize: '13px',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        ))}
       </div>
-      <p style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>{description}</p>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: '100%',
-          background: '#0a0a0f',
-          border: '1px solid #2a2a3e',
-          borderRadius: '6px',
-          padding: '10px',
-          color: '#00d4ff',
-          fontSize: '13px',
-          fontFamily: 'monospace'
-        }}
-      />
+      )}
+      
+      <button onClick={handleSave} style={{
+        marginTop: '24px',
+        background: 'linear-gradient(135deg, #00d4ff, #00ff88)',
+        color: '#000',
+        border: 'none',
+        borderRadius: '8px',
+        padding: '14px 28px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        fontSize: '14px'
+      }}>
+        Save Agent Configuration
+      </button>
+
+      {/* Provider Status */}
+      <div style={{ marginTop: '24px', background: '#12121a', borderRadius: '16px', padding: '24px', border: '1px solid #1a1a2e' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '20px' }}>Model Provider Selection</h3>
+        
+        {/* Provider Selector for Models */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', color: '#888', fontSize: '13px' }}>Select Provider for Model Dropdown</label>
+          <select
+            value={selectedModelProvider}
+            onChange={(e) => setSelectedModelProvider(e.target.value)}
+            disabled={configuredProviders.size === 0}
+            style={{
+              width: '100%',
+              background: '#1a1a2e',
+              border: '1px solid #2a2a3e',
+              borderRadius: '8px',
+              padding: '12px',
+              color: configuredProviders.size === 0 ? '#666' : '#fff',
+              fontSize: '14px'
+            }}
+          >
+            {configuredProviders.size > 0 ? (
+              Array.from(configuredProviders).map(providerId => (
+                <option key={providerId} value={providerId}>{providerId.charAt(0).toUpperCase() + providerId.slice(1)}</option>
+              ))
+            ) : (
+              <option value="">No providers configured</option>
+            )}
+          </select>
+          <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+            {configuredProviders.size > 0 
+              ? `Showing models for ${selectedModelProvider}. Only configured providers are available.`
+              : 'Go to Settings to configure a provider first.'}
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+          {configuredProviders.size > 0 ? (
+            Array.from(configuredProviders).map(providerId => (
+              <div key={providerId} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                background: selectedModelProvider === providerId ? 'rgba(0, 212, 255, 0.1)' : '#1a1a2e',
+                borderRadius: '8px',
+                border: selectedModelProvider === providerId ? '1px solid #00d4ff' : '1px solid #00ff8840',
+                cursor: 'pointer'
+              }}
+              onClick={() => setSelectedModelProvider(providerId)}
+              >
+                <span style={{ fontSize: '16px' }}>✅</span>
+                <span style={{ fontWeight: '600', textTransform: 'capitalize' }}>{providerId}</span>
+                <span style={{ fontSize: '11px', color: '#888' }}>
+                  {getModelsForProvider(providerId).length} models
+                </span>
+              </div>
+            ))
+          ) : (
+            <p style={{ color: '#666', padding: '20px' }}>No providers configured. Go to Settings to configure a provider.</p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

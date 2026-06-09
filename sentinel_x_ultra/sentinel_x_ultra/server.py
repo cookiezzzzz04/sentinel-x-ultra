@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import structlog
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -83,6 +84,55 @@ provider_registry = ProviderRegistry()
 llm_router: MultiProviderRouter | None = None
 agent_registry: AgentRegistry | None = None
 provider_key_map: dict[str, dict] = {}  # Store API keys in memory
+provider_config_file: Path = settings.storage.base_path / "providers.json"
+
+# Agent model configurations
+agent_model_configs: dict[str, str] = {}  # agent_id -> model
+agent_config_file: Path = settings.storage.base_path / "agent_models.json"
+
+def _load_provider_configs():
+    """Load provider configurations from file."""
+    global provider_key_map
+    if provider_config_file.exists():
+        try:
+            with open(provider_config_file, 'r') as f:
+                data = json.load(f)
+                provider_key_map = data.get('providers', {})
+                logger.info("provider_configs_loaded", count=len(provider_key_map))
+        except Exception as e:
+            logger.error("failed_to_load_provider_configs", error=str(e))
+
+def _save_provider_configs():
+    """Save provider configurations to file."""
+    try:
+        settings.storage.base_path.mkdir(parents=True, exist_ok=True)
+        with open(provider_config_file, 'w') as f:
+            json.dump({'providers': provider_key_map}, f, indent=2)
+        logger.info("provider_configs_saved", count=len(provider_key_map))
+    except Exception as e:
+        logger.error("failed_to_save_provider_configs", error=str(e))
+
+def _load_agent_configs():
+    """Load agent model configurations from file."""
+    global agent_model_configs
+    if agent_config_file.exists():
+        try:
+            with open(agent_config_file, 'r') as f:
+                data = json.load(f)
+                agent_model_configs = data.get('agents', {})
+                logger.info("agent_configs_loaded", count=len(agent_model_configs))
+        except Exception as e:
+            logger.error("failed_to_load_agent_configs", error=str(e))
+
+def _save_agent_configs():
+    """Save agent model configurations to file."""
+    try:
+        settings.storage.base_path.mkdir(parents=True, exist_ok=True)
+        with open(agent_config_file, 'w') as f:
+            json.dump({'agents': agent_model_configs}, f, indent=2)
+        logger.info("agent_configs_saved", count=len(agent_model_configs))
+    except Exception as e:
+        logger.error("failed_to_save_agent_configs", error=str(e))
 
 # Phase 2 - Engines and Analyzers
 knowledge_graphs: dict[str, KnowledgeGraphEngine] = {}  # project_id -> engine
@@ -129,6 +179,12 @@ async def lifespan(app: FastAPI):
     global llm_router, agent_registry
 
     logger.info("starting_sentinel_x", version="0.1.0", phase="phase-2")
+
+    # Load provider configurations from file
+    _load_provider_configs()
+    
+    # Load agent model configurations from file
+    _load_agent_configs()
 
     # Initialize message bus
     try:
@@ -290,9 +346,48 @@ async def get_model_config():
 @app.post("/api/config/save-key")
 async def save_api_key(req: ApiKeyRequest):
     """Save API key for a provider."""
-    # Store in memory for now - in production you'd want encrypted file storage
+    # Store in memory and persist to file
     provider_key_map[req.provider] = {"api_key": req.api_key, "base_url": req.base_url}
+    try:
+        _save_provider_configs()
+    except Exception as e:
+        logger.error("save_provider_failed", error=str(e))
+        return {"status": "error", "error": f"Failed to save configuration: {str(e)}"}
     return {"status": "ok", "provider": req.provider}
+
+
+@app.get("/api/config/providers")
+async def get_configured_providers():
+    """Get list of configured providers (those that have an API key saved)."""
+    return {
+        "providers": list(provider_key_map.keys()),
+        "count": len(provider_key_map),
+    }
+
+
+class AgentModelConfigRequest(BaseModel):
+    agents: dict[str, str]  # agent_id -> model
+
+
+@app.get("/api/config/agent-models")
+async def get_agent_model_configs():
+    """Get agent model configurations."""
+    return {
+        "agents": agent_model_configs,
+    }
+
+
+@app.post("/api/config/agent-models")
+async def save_agent_model_configs(req: AgentModelConfigRequest):
+    """Save agent model configurations."""
+    global agent_model_configs
+    agent_model_configs = req.agents
+    try:
+        _save_agent_configs()
+    except Exception as e:
+        logger.error("save_agent_configs_failed", error=str(e))
+        return {"status": "error", "error": f"Failed to save agent configs: {str(e)}"}
+    return {"status": "ok", "agents": agent_model_configs}
 
 
 class TestProviderRequest(BaseModel):
@@ -369,7 +464,7 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
             # Try alternative models if default fails (only for 404, not for auth errors)
             alt_models = {
                 ProviderType.GROQ: ["mixtral-8x7b-32768", "llama-3.3-70b-versatile"],
-                ProviderType.OPENROUTER: ["google/gemini-pro", "openai/gpt-4o-mini"],
+                ProviderType.OPENROUTER: ["google/gemini-2.0-flash-exp", "meta-llama/llama-3.3-70b-instruct"],
             }
             alternatives = alt_models.get(provider, [])
             last_error = f"Model '{test_model}' not found. Tried alternatives but all failed."

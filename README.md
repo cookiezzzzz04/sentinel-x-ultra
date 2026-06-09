@@ -21,17 +21,28 @@ An advanced security analysis platform that combines Phase 2 analytical engines 
 - **Dependency Agent** - CVE scanning for third-party vulnerabilities
 - **Debate Engine** - 5-role adversarial validation for finding quality
 
+## Supported LLM Providers
+
+- **OpenAI** - GPT-4o, GPT-4o-mini, GPT-4 Turbo
+- **Anthropic** - Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku
+- **Google** - Gemini Pro, Gemini 2.0 Flash, Gemma
+- **Groq** - Llama 3.1, Mixtral
+- **Ollama** - Local models (Llama 3, Mistral, etc.)
+- **DeepSeek** - DeepSeek Chat
+- **Mistral AI** - Mistral Large, Mistral 7B
+- **OpenRouter** - Access to 100+ models including Meta-Llama, Google, Anthropic via unified API
+
 ## Quick Start
 
 ### Prerequisites
 - Python 3.11+
-- API keys for LLM providers (Anthropic, OpenAI, Groq, etc.)
+- API keys for LLM providers (Anthropic, OpenAI, Groq, OpenRouter, etc.)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone <https://github.com/cookiezzzzz04/sentinel-x-ultra.git>
+git clone https://github.com/cookiezzzzz04/sentinel-x-ultra.git
 cd sentinel_x_ultra
 ```
 
@@ -40,18 +51,58 @@ cd sentinel_x_ultra
 pip install -r requirements.txt
 ```
 
-3. Configure API keys:
-   - Run the application and navigate to Settings
-   - Enter your LLM provider API key and base URL
+3. (Optional) Build the frontend:
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
 
 ### Running the Server
 
+**Windows:**
+```powershell
+cd "C:\Users\YourName\path\to\sentinel-x-ultra"
+python -m uvicorn sentinel_x_ultra.server:app --host 127.0.0.1 --port 7860
+```
+
+**Linux/Mac:**
 ```bash
 cd sentinel_x_ultra
 python -m uvicorn sentinel_x_ultra.server:app --host 127.0.0.1 --port 7860
 ```
 
-Access the web UI at: http://127.0.0.1:7860
+Access the web UI at: **http://127.0.0.1:7860**
+
+## Configuration
+
+### Web UI Setup
+1. Navigate to **Settings** in the web UI
+2. Select your LLM provider (OpenAI, Anthropic, OpenRouter, etc.)
+3. Enter your API key and base URL (if required)
+4. Choose a default model from the dropdown
+5. Click **Save**
+
+### Provider Base URLs
+| Provider | Base URL |
+|----------|----------|
+| OpenAI | `https://api.openai.com/v1` |
+| Anthropic | `https://api.anthropic.com` |
+| Google | `https://generativelanguage.googleapis.com/v1beta` |
+| Groq | `https://api.groq.com/openai/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| Mistral AI | `https://api.mistral.ai/v1` |
+| Ollama | `http://localhost:11434/v1` |
+
+### OpenRouter Setup
+OpenRouter provides access to many models through a single API key. To use OpenRouter:
+1. Get an API key from https://openrouter.ai/
+2. In Settings, select **OpenRouter** as the provider
+3. Enter your OpenRouter API key
+4. Select a model like `openrouter/auto` (auto-select best model) or specific models like `meta-llama/llama-3.1-8b-instant`
+5. Save and restart the server if needed
 
 ## API Endpoints
 
@@ -66,6 +117,12 @@ POST   /api/projects          # Create project
 GET    /api/projects          # List projects
 GET    /api/projects/{id}     # Get project details
 DELETE /api/projects/{id}     # Delete project
+```
+
+### Provider Configuration
+```bash
+GET  /api/config/providers    # List available providers
+GET  /api/config/models       # List available models
 ```
 
 ### Phase 2 Analysis
@@ -108,6 +165,7 @@ sentinel_x_ultra/                    # Project root
 │   │   ├── permission_graph.py  # Access control analysis
 │   │   └── business_rules.py    # Policy validation
 │   ├── providers/                # LLM provider integrations
+│   │   └── providers.py         # Multi-provider support
 │   ├── memory.py                 # Project memory/storage
 │   ├── config.py                 # Configuration management
 │   └── server.py                 # FastAPI web server
@@ -118,6 +176,23 @@ sentinel_x_ultra/                    # Project root
 ```
 
 **Note:** The frontend is a React/Vite application that gets built into `frontend/dist/` and is served by the FastAPI server.
+
+## Troubleshooting
+
+### Server won't start
+- Ensure Python 3.11+ is installed: `python --version`
+- Check that port 7860 is not already in use
+- Verify you're in the correct directory with `requirements.txt`
+
+### OpenRouter errors (404)
+- Ensure you have a valid OpenRouter API key
+- Restart the server after changing API keys
+- Try using `openrouter/auto` for automatic model selection
+
+### Provider connection issues
+- Verify your API key is correct
+- Check that the base URL matches your provider
+- Some providers require specific model names in their catalog
 
 ## License
 
