@@ -31,7 +31,7 @@ An advanced security analysis platform that combines Phase 2 analytical engines 
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone <https://github.com/cookiezzzzz04/sentinel-x-ultra.git>
 cd sentinel_x_ultra
 ```
 

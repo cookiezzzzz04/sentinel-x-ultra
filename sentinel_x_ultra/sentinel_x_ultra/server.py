@@ -55,6 +55,14 @@ from .agents.phase3 import (
     ThreatModelingAgent,
     DependencyAgent,
     DebateAgent,
+    Finding,
+)
+
+# Phase 4 imports - Remediation, Reporting, Compliance
+from .agents.phase4 import (
+    RemediationAgent,
+    ReportGenerator,
+    ComplianceEngine,
 )
 
 structlog.configure(
@@ -86,6 +94,9 @@ rag_engines: dict[str, RAGEngine] = {}  # project_id -> engine
 
 # Phase 3 - Agents
 phase3_agents: dict[str, dict[str, Any]] = {}  # project_id -> {agent_type: agent_instance}
+
+# Phase 4 - Remediation & Compliance
+phase4_engines: dict[str, dict[str, Any]] = {}  # project_id -> {engine_type: engine_instance}
 
 # Path to frontend dist (relative to this file)
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend/dist"
@@ -239,10 +250,10 @@ async def get_project(project_id: str):
 @app.delete("/api/projects/{project_id}")
 async def delete_project(project_id: str):
     """Delete a project."""
-    project_dir = memory_engine.storage.projects_dir / project_id
-    if project_dir.exists():
-        import shutil
-        shutil.rmtree(project_dir)
+    # Projects are stored as JSON files, not directories
+    project_file = memory_engine.storage_path / f"{project_id}.json"
+    if project_file.exists():
+        project_file.unlink()
         return {"status": "ok", "message": f"Project {project_id} deleted"}
     raise HTTPException(status_code=404, detail="Project not found")
 
@@ -309,8 +320,9 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
     # Normalize base_url - remove /openai/v1 or /v1 suffixes as providers add these
     test_base_url = test_base_url.rstrip('/')
     # Check longer suffix first to avoid incorrectly stripping /v1 from /openai/v1
+    # Note: /openai/v1 is 10 chars, /v1 is 3 chars
     if test_base_url.endswith('/openai/v1'):
-        test_base_url = test_base_url[:-11]
+        test_base_url = test_base_url[:-10]
     elif test_base_url.endswith('/v1'):
         test_base_url = test_base_url[:-3]
 
@@ -715,7 +727,12 @@ async def get_analysis_summary(project_id: str):
 
 class AgentTaskRequest(BaseModel):
     action: str
-    input_data: dict = {}  # Using dict without generics to avoid PEP 563 forward ref issues with Pydantic
+    input_data: dict | None = None  # Using dict without generics to avoid PEP 563 forward ref issues with Pydantic
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.input_data is None:
+            self.input_data = {}
 
 
 # ============ Debug Endpoints ============
@@ -901,16 +918,185 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
 
+# ============ Phase 4: Remediation & Compliance Endpoints ============
+
+# --- Remediation Agent ---
+
+@app.post("/api/projects/{project_id}/agents/remediation")
+async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
+    """Run remediation agent to create/validate/implement remediation plans."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        # Get or create remediation agent
+        if project_id not in phase4_engines:
+            phase4_engines[project_id] = {}
+        
+        engines = phase4_engines[project_id]
+        if "remediation" not in engines:
+            engines["remediation"] = RemediationAgent(message_bus, llm_router, project_id)
+        
+        agent = engines["remediation"]
+        task = TaskPayload(
+            task_id=str(uuid.uuid4()),
+            task_type="remediation",
+            input_data=req.input_data or {},
+        )
+        result = await agent.execute_task(task)
+        
+        return {
+            "status": "completed",
+            "agent": "remediation",
+            "result": result,
+            "findings_created": len(getattr(agent, 'findings', [])),
+        }
+    except Exception as e:
+        logger.error("remediation_agent_error", error=str(e), project_id=project_id, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
+
+# --- Report Generator ---
+
+@app.get("/api/projects/{project_id}/reports")
+async def list_reports(project_id: str):
+    """List available report types."""
+    return {
+        "reports": [
+            {"type": "executive_summary", "name": "Executive Summary", "description": "High-level security overview for leadership"},
+            {"type": "detailed_technical", "name": "Detailed Technical Report", "description": "Comprehensive technical security findings"},
+            {"type": "compliance", "name": "Compliance Report", "description": "Framework compliance mapping (OWASP, NIST, etc.)"},
+        ],
+        "project_id": project_id,
+    }
+
+
+@app.post("/api/projects/{project_id}/reports/executive")
+async def generate_executive_report(project_id: str):
+    """Generate executive summary report."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        # Initialize report generator
+        if project_id not in phase4_engines:
+            phase4_engines[project_id] = {}
+        
+        if "report_generator" not in phase4_engines[project_id]:
+            phase4_engines[project_id]["report_generator"] = ReportGenerator(project_id, llm_router)
+        
+        report_gen = phase4_engines[project_id]["report_generator"]
+        
+        # Get findings from project
+        findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
+        
+        # Generate metrics from project data
+        metrics = {
+            "scan_timestamp": getattr(project, 'created_at', None),
+            "total_files_analyzed": len(getattr(project, 'analyzed_files', [])),
+        }
+        
+        report = await report_gen.generate_executive_summary(findings, metrics)
+        
+        return {
+            "status": "completed",
+            "report": report,
+        }
+    except Exception as e:
+        logger.error("executive_report_error", error=str(e), project_id=project_id, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Report generation error: {str(e)}")
+
+
+@app.post("/api/projects/{project_id}/reports/compliance")
+async def generate_compliance_report(project_id: str, frameworks: list[str] = ["OWASP Top 10", "NIST CSF"]):
+    """Generate compliance report mapping findings to frameworks."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        # Initialize compliance engine
+        if project_id not in phase4_engines:
+            phase4_engines[project_id] = {}
+        
+        if "compliance" not in phase4_engines[project_id]:
+            phase4_engines[project_id]["compliance"] = ComplianceEngine(project_id)
+        
+        compliance_eng = phase4_engines[project_id]["compliance"]
+        
+        # Get findings from project
+        findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
+        
+        report = await compliance_eng.assess_compliance(findings)
+        
+        return {
+            "status": "completed",
+            "report": report,
+            "frameworks": frameworks,
+        }
+    except Exception as e:
+        logger.error("compliance_report_error", error=str(e), project_id=project_id, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Compliance report error: {str(e)}")
+
+
+@app.post("/api/projects/{project_id}/reports/control-mapping")
+async def generate_control_mapping(project_id: str, framework: str = "OWASP Top 10"):
+    """Generate detailed control mapping for a specific framework."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        # Initialize compliance engine
+        if project_id not in phase4_engines:
+            phase4_engines[project_id] = {}
+        
+        if "compliance" not in phase4_engines[project_id]:
+            phase4_engines[project_id]["compliance"] = ComplianceEngine(project_id)
+        
+        compliance_eng = phase4_engines[project_id]["compliance"]
+        
+        # Get findings from project
+        findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
+        
+        mapping = await compliance_eng.generate_control_mapping(findings, framework)
+        
+        return {
+            "status": "completed",
+            "mapping": mapping,
+        }
+    except Exception as e:
+        logger.error("control_mapping_error", error=str(e), project_id=project_id, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Control mapping error: {str(e)}")
+
+
+@app.get("/api/projects/{project_id}/compliance/frameworks")
+async def list_compliance_frameworks(project_id: str):
+    """List available compliance frameworks."""
+    return {
+        "frameworks": [
+            {"id": "OWASP Top 10", "name": "OWASP Top 10", "version": "2021", "description": "Standard for web application security"},
+            {"id": "NIST CSF", "name": "NIST CSF", "version": "2.0", "description": "Cybersecurity Framework"},
+            {"id": "SOC2", "name": "SOC 2", "version": "2017", "description": "Service Organization Control 2"},
+            {"id": "PCI-DSS", "name": "PCI DSS", "version": "4.0", "description": "Payment Card Industry Data Security Standard"},
+        ],
+        "project_id": project_id,
+    }
+
+
 @app.get("/api/projects/{project_id}/agents")
 async def list_agents(project_id: str):
     """List all available agents for a project."""
     return {
         "agents": [
-            {"type": "recon", "name": "Reconnaissance Agent", "description": "Target discovery and OSINT"},
-            {"type": "code_review", "name": "Code Review Agent", "description": "SAST with deep code analysis"},
-            {"type": "threat_modeling", "name": "Threat Modeling Agent", "description": "Attack path analysis"},
-            {"type": "dependency", "name": "Dependency Agent", "description": "Vulnerability scanning"},
-            {"type": "debate", "name": "Debate Engine", "description": "5-role adversarial validation"},
+            {"type": "recon", "name": "Reconnaissance Agent", "description": "Target discovery and OSINT", "phase": 3},
+            {"type": "code_review", "name": "Code Review Agent", "description": "SAST with deep code analysis", "phase": 3},
+            {"type": "threat_modeling", "name": "Threat Modeling Agent", "description": "Attack path analysis", "phase": 3},
+            {"type": "dependency", "name": "Dependency Agent", "description": "Vulnerability scanning", "phase": 3},
+            {"type": "debate", "name": "Debate Engine", "description": "5-role adversarial validation", "phase": 3},
+            {"type": "remediation", "name": "Remediation Agent", "description": "Automated remediation planning", "phase": 4},
         ],
         "active_count": len(phase3_agents.get(project_id, {})),
     }

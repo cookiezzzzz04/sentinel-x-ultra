@@ -250,7 +250,7 @@ function ProjectView({ project, onBack }: { project: Project; onBack: () => void
       </div>
       
       {activeTab === 'agents' ? (
-        <AgentsPanel projectId={project.project_id} runningAgent={runningAgent} onRunAgent={runAgent} output={agentOutput} />
+        <AgentsPanel runningAgent={runningAgent} onRunAgent={runAgent} output={agentOutput} />
       ) : activeTab === 'overview' ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
@@ -565,6 +565,21 @@ function SetupView(_props: { health: HealthStatus | null }) {
       setTestStatus({type: 'error', message: 'Please enter an API key'})
       return
     }
+    
+    // Validate URL to catch common typos
+    const normalizedUrl = baseUrl.toLowerCase().trim()
+    // Check for .co typo (must be EXACT match of api.groq.co domain, not just any .co substring)
+    if (normalizedUrl === 'https://api.groq.co' || normalizedUrl === 'https://api.groq.co/' || 
+        normalizedUrl.startsWith('https://api.groq.co/')) {
+      setTestStatus({type: 'error', message: '❌ Invalid URL: Groq uses api.groq.com (with .com, not .co)'})
+      return
+    }
+    if (normalizedUrl === 'https://api.groq.ai' || normalizedUrl === 'https://api.groq.ai/' || 
+        normalizedUrl.startsWith('https://api.groq.ai/')) {
+      setTestStatus({type: 'error', message: '❌ Invalid URL: Groq uses api.groq.com (not .ai)'})
+      return
+    }
+    
     setIsTesting(true)
     setTestStatus({type: 'none', message: ''})
     try {
@@ -576,6 +591,14 @@ function SetupView(_props: { health: HealthStatus | null }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ api_key: apiKey, model: model }),
       })
+      
+      // Check response status
+      if (!res.ok) {
+        const text = await res.text()
+        setTestStatus({type: 'error', message: `❌ HTTP ${res.status}: ${text.substring(0, 200)}`})
+        return
+      }
+      
       const data = await res.json()
       if (data.status === 'ok') {
         setTestStatus({type: 'success', message: `✅ Connected successfully! Model: ${data.model || model}, Latency: ${Math.round(data.latency_ms)}ms`})
@@ -915,8 +938,7 @@ function LoadingSpinner() {
 }
 
 // ============ AGENTS PANEL (Phase 3) ============
-function AgentsPanel({ projectId, runningAgent, onRunAgent, output }: { 
-  projectId: string; 
+function AgentsPanel({ runningAgent, onRunAgent, output }: { 
   runningAgent: string | null;
   onRunAgent: (agent: string, action: string, data: any) => void;
   output: string;

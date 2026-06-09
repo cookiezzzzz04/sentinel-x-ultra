@@ -63,7 +63,7 @@ class LLMResponse(BaseModel):
     content: str
     model: str
     provider: ProviderType
-    usage: dict[str, int] | None = None
+    usage: dict[str, Any] | None = None
     latency_ms: float | None = None
 
 
