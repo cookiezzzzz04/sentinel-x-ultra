@@ -311,7 +311,7 @@ class ThreatIntelligenceAgent(BaseAgent):
     - OWASP A01 (Broken Access Control), A07 (Auth Failures) detection
     """
     
-    def __init__(self, message_bus, llm_router, project_id: str, model: str = "claude-3.5-sonnet-20241022"):
+    def __init__(self, message_bus, llm_router, project_id: str, model: str = "llama-3.3-70b-versatile"):
         super().__init__(message_bus, llm_router, project_id, model)
         self.agent_type = AgentType.THREAT_MODELING
         self.iocs: List[IOC] = []
@@ -527,7 +527,7 @@ class SecurityOperationsAgent(BaseAgent):
     - OWASP A09 (Security Logging Failures) detection
     """
     
-    def __init__(self, message_bus, llm_router, project_id: str, model: str = "claude-3.5-sonnet-20241022"):
+    def __init__(self, message_bus, llm_router, project_id: str, model: str = "llama-3.3-70b-versatile"):
         super().__init__(message_bus, llm_router, project_id, model)
         self.siem_config = self._load_siem_config()
         self.soar_playbooks = self._load_playbooks()
@@ -791,7 +791,7 @@ class AdaptiveDefenseAgent(BaseAgent):
     - OWASP A06 (Insecure Design) and A10 (Mishandling Exceptions) detection
     """
     
-    def __init__(self, message_bus, llm_router, project_id: str, model: str = "claude-3.5-sonnet-20241022"):
+    def __init__(self, message_bus, llm_router, project_id: str, model: str = "llama-3.3-70b-versatile"):
         super().__init__(message_bus, llm_router, project_id, model)
         self.threat_feeds = self._load_threat_feeds()
         self.baseline_normal = self._load_baseline()
@@ -1085,7 +1085,7 @@ class SupplyChainAgent(BaseAgent):
     - OWASP A03 (Software Supply Chain Failures) detection
     """
     
-    def __init__(self, message_bus, llm_router, project_id: str, model: str = "claude-3.5-sonnet-20241022"):
+    def __init__(self, message_bus, llm_router, project_id: str, model: str = "llama-3.3-70b-versatile"):
         super().__init__(message_bus, llm_router, project_id, model)
         self.nvd_api_key = os.environ.get('NVD_API_KEY', '')
         self.syft_available = self._check_syft()
@@ -1758,7 +1758,7 @@ class APISecurityAgent(BaseAgent):
     - A10: Mishandling of Exceptional Conditions (error handling)
     """
     
-    def __init__(self, message_bus, llm_router, project_id: str, model: str = "claude-3.5-sonnet-20241022"):
+    def __init__(self, message_bus, llm_router, project_id: str, model: str = "llama-3.3-70b-versatile"):
         super().__init__(message_bus, llm_router, project_id, model)
         self.prance_available = self._check_prance()
         self.fuzz_payloads = self._load_fuzz_payloads()
@@ -2394,7 +2394,7 @@ class APISecurityAgent(BaseAgent):
 
 # ============ Phase 5 Factory ============
 
-def create_phase5_agent(message_bus, llm_router, agent_type: str, project_id: str, model: str = "claude-3.5-sonnet-20241022") -> BaseAgent:
+def create_phase5_agent(message_bus, llm_router, agent_type: str, project_id: str, model: str = "llama-3.3-70b-versatile") -> BaseAgent:
     """
     Factory function to create Phase 5 agents.
     

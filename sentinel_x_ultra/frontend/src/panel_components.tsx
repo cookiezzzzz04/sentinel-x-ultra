@@ -417,32 +417,19 @@ export function InputSourcesPanel() {
 export function ThreatHuntPanel() {
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>🎯</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#00d4ff' }}>24</div><div style={{ fontSize: '12px', color: '#888' }}>IOCs Found</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>👤</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff4444' }}>3</div><div style={{ fontSize: '12px', color: '#888' }}>Threat Actors</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📡</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff8844' }}>2</div><div style={{ fontSize: '12px', color: '#888' }}>Campaigns</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>⚔️</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffaa00' }}>7</div><div style={{ fontSize: '12px', color: '#888' }}>Attacks</div></div>
-      </div>
       <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>🔍 Active Threat Hunts</h3>
-        <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Search for indicators of compromise (IOCs), track threat actors, and investigate ongoing campaigns</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {[
-            { name: 'APT29 Campaign Analysis', status: 'active', findings: 12, severity: 'critical' },
-            { name: 'Ransomware IOC Search', status: 'active', findings: 5, severity: 'high' },
-            { name: 'Phishing Infrastructure Discovery', status: 'pending', findings: 0, severity: 'medium' },
-          ].map((hunt, i) => (
-            <div key={i} style={{ padding: '16px', background: '#1a1a2e', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '600', marginBottom: '4px' }}>{hunt.name}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>{hunt.findings} IOCs found</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: hunt.status === 'active' ? '#00ff88' : '#ffaa00', color: '#000' }}>{hunt.status}</span>
-                <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', background: hunt.severity === 'critical' ? '#ff4444' : hunt.severity === 'high' ? '#ff8844' : '#ffaa00', color: '#000' }}>{hunt.severity}</span>
-              </div>
-            </div>
-          ))}
+        <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>🔍 Threat Hunt</h3>
+        <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Run an agent from the Agents tab to populate threat hunt data. Until then, every counter below is 0.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>🎯</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#00d4ff' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>IOCs Found</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>👤</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff4444' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Threat Actors</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📡</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff8844' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Campaigns</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>⚔️</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffaa00' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Attacks</div></div>
+        </div>
+        <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+          <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔍</div>
+          <div style={{ fontWeight: '600', marginBottom: '4px', color: '#888' }}>No threat hunt data yet</div>
+          <div>Run a threat intelligence agent to populate this view.</div>
         </div>
       </div>
     </div>
@@ -453,32 +440,19 @@ export function ThreatHuntPanel() {
 export function SupplyChainPanel() {
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📦</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#00d4ff' }}>847</div><div style={{ fontSize: '12px', color: '#888' }}>Dependencies</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>⚠️</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff8844' }}>12</div><div style={{ fontSize: '12px', color: '#888' }}>Vulnerabilities</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>🚨</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff4444' }}>3</div><div style={{ fontSize: '12px', color: '#888' }}>Critical</div></div>
-        <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📋</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffaa00' }}>5</div><div style={{ fontSize: '12px', color: '#888' }}>License Issues</div></div>
-      </div>
       <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>📦 SBOM & Dependency Analysis</h3>
-        <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Generate software bill of materials (SBOM) and scan dependencies for known vulnerabilities (CVEs)</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {[
-            { name: 'lodash@4.17.21', vuln: 'CVE-2021-23337', severity: 'high', license: 'MIT' },
-            { name: 'axios@0.21.1', vuln: 'CVE-2021-3749', severity: 'critical', license: 'MIT' },
-            { name: 'express@4.18.0', vuln: 'None', severity: 'none', license: 'MIT' },
-          ].map((dep, i) => (
-            <div key={i} style={{ padding: '16px', background: '#1a1a2e', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '600' }}>{dep.name}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>License: {dep.license}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {dep.vuln !== 'None' && <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: '#ff4444', color: '#fff' }}>{dep.vuln}</span>}
-                <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', background: dep.severity === 'critical' ? '#ff4444' : dep.severity === 'high' ? '#ff8844' : '#00ff88', color: '#000' }}>{dep.severity}</span>
-              </div>
-            </div>
-          ))}
+        <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Generate software bill of materials (SBOM) and scan dependencies for known vulnerabilities (CVEs). Run an agent from the Agents tab to populate this view.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📦</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#00d4ff' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Dependencies</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>⚠️</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff8844' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Vulnerabilities</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>🚨</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff4444' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>Critical</div></div>
+          <div style={{ background: '#1a1a2e', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}><div style={{ fontSize: '24px', marginBottom: '4px' }}>📋</div><div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffaa00' }}>0</div><div style={{ fontSize: '12px', color: '#888' }}>License Issues</div></div>
+        </div>
+        <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+          <div style={{ fontSize: '32px', marginBottom: '8px' }}>📦</div>
+          <div style={{ fontWeight: '600', marginBottom: '4px', color: '#888' }}>No dependency data yet</div>
+          <div>Run a supply chain agent to generate an SBOM and scan for vulnerabilities.</div>
         </div>
       </div>
     </div>

@@ -13,13 +13,13 @@ The file lives at ``<storage>/agent_models.json`` and looks like::
       "schema_version": 1,
       "updated_at": "2025-...",
       "agents": {
-        "recon":              {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-        "code_review":        {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-        "threat_modeling":    {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
+        "recon":              {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+        "code_review":        {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+        "threat_modeling":    {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
         ...
-        "threat_intelligence":{"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-        "supply_chain":       {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-        "api_security":       {"model": "claude-sonnet-4-20250514", "purpose": "code"},
+        "threat_intelligence":{"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+        "supply_chain":       {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+        "api_security":       {"model": "llama-3.3-70b-versatile", "purpose": "code"},
         ...
       }
     }
@@ -47,31 +47,31 @@ logger = structlog.get_logger()
 # (reasoning / code / report / embedding).
 DEFAULT_AGENT_MODELS: dict[str, dict[str, str]] = {
     # Phase 3 agents
-    "recon":              {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "code_review":        {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-    "threat_modeling":    {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "dependency":         {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-    "debate":             {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
+    "recon":              {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "code_review":        {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+    "threat_modeling":    {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "dependency":         {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+    "debate":             {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
     # Phase 4
-    "remediation":        {"model": "claude-sonnet-4-20250514", "purpose": "report"},
-    "report":             {"model": "claude-sonnet-4-20250514", "purpose": "report"},
-    "compliance":         {"model": "claude-sonnet-4-20250514", "purpose": "report"},
+    "remediation":        {"model": "llama-3.3-70b-versatile", "purpose": "report"},
+    "report":             {"model": "llama-3.3-70b-versatile", "purpose": "report"},
+    "compliance":         {"model": "llama-3.3-70b-versatile", "purpose": "report"},
     # Phase 5
-    "threat_intelligence":{"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "security_operations":{"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "adaptive_defense":   {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "supply_chain":       {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-    "api_security":       {"model": "claude-sonnet-4-20250514", "purpose": "code"},
+    "threat_intelligence":{"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "security_operations":{"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "adaptive_defense":   {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "supply_chain":       {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+    "api_security":       {"model": "llama-3.3-70b-versatile", "purpose": "code"},
     # V3 agents (the agent-centric knowledge owners)
-    "documentation":      {"model": "claude-sonnet-4-20250514", "purpose": "report"},
-    "tooling":            {"model": "claude-sonnet-4-20250514", "purpose": "report"},
-    "architecture":       {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "business_logic":     {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "evidence":           {"model": "claude-sonnet-4-20250514", "purpose": "code"},
-    "correlation":        {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "qa":                 {"model": "claude-sonnet-4-20250514", "purpose": "report"},
-    "permission":         {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
-    "workflow":           {"model": "claude-sonnet-4-20250514", "purpose": "reasoning"},
+    "documentation":      {"model": "llama-3.3-70b-versatile", "purpose": "report"},
+    "tooling":            {"model": "llama-3.3-70b-versatile", "purpose": "report"},
+    "architecture":       {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "business_logic":     {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "evidence":           {"model": "llama-3.3-70b-versatile", "purpose": "code"},
+    "correlation":        {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "qa":                 {"model": "llama-3.3-70b-versatile", "purpose": "report"},
+    "permission":         {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
+    "workflow":           {"model": "llama-3.3-70b-versatile", "purpose": "reasoning"},
 }
 
 

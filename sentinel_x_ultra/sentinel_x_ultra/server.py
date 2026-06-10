@@ -202,7 +202,7 @@ VULN_TO_AGENTS = {
         "description": "IDOR requires API Security agent for authorization testing and resource enumeration",
         "owasp": ["A01"],
         "severity": "high",
-        "payloads": ["/api/users/123 → /api/users/124", "POST ID manipulation", "UUID enumeration", "HTTP parameter pollution"],
+        "payloads": ["/api/users/123 â†’ /api/users/124", "POST ID manipulation", "UUID enumeration", "HTTP parameter pollution"],
         "indicators": ["object_reference", "missing_authz", "sequential_id", "direct_access"],
     },
     "ssrf": {
@@ -292,7 +292,7 @@ VULN_TO_AGENTS = {
         "description": "OAuth vulnerabilities require API Security agent with flow manipulation payloads",
         "owasp": ["A01", "A07"],
         "severity": "high",
-        "payloads": ["redirect_uri: http://evil.com", "redirect_uri: null/https://expected.com@evil.com", "state parameter missing", "code reuse after logout", "Scope escalation: email → email,full_access"],
+        "payloads": ["redirect_uri: http://evil.com", "redirect_uri: null/https://expected.com@evil.com", "state parameter missing", "code reuse after logout", "Scope escalation: email â†’ email,full_access"],
         "indicators": ["oauth_flow", "redirect_uri", "state_parameter", "token_reuse"],
     },
     "path_traversal": {
@@ -373,35 +373,35 @@ VULN_TO_AGENTS = {
 AGENT_INFO = {
     "threat_intelligence": {
         "name": "Threat Intelligence Agent",
-        "icon": "🔍",
+        "icon": "ðŸ”",
         "color": "#ff8844",
         "description": "YARA rules, IOC enrichment, threat tracking, malware analysis",
         "phase": 5,
     },
     "security_operations": {
         "name": "Security Operations Agent",
-        "icon": "🛡️",
+        "icon": "ðŸ›¡ï¸",
         "color": "#00d4ff",
         "description": "SIEM integration, SOAR playbooks, alert triage, incident management",
         "phase": 5,
     },
     "adaptive_defense": {
         "name": "Adaptive Defense Agent",
-        "icon": "⚡",
+        "icon": "âš¡",
         "color": "#aa88ff",
         "description": "ML anomaly detection, behavioral analysis, self-healing automation",
         "phase": 5,
     },
     "supply_chain": {
         "name": "Supply Chain Agent",
-        "icon": "📦",
+        "icon": "ðŸ“¦",
         "color": "#00ff88",
         "description": "SBOM generation, dependency analysis, license compliance, CVE scanning",
         "phase": 5,
     },
     "api_security": {
         "name": "API Security Agent",
-        "icon": "🔗",
+        "icon": "ðŸ”—",
         "color": "#ffaa00",
         "description": "OpenAPI/GraphQL analysis, fuzzing, authentication testing, rate limiting",
         "phase": 5,
@@ -412,6 +412,8 @@ AGENT_INFO = {
 class CreateProjectRequest(BaseModel):
     name: str
     scope: ScopeGraph | None = None
+    folder: str | None = None       # Folder-first project creation (optional for backward compat)
+    target: str | None = None       # Target domain for seeding the recon txt templates
 
 
 class SendMessageRequest(BaseModel):
@@ -541,10 +543,42 @@ async def health():
 # Project Management
 @app.post("/api/projects")
 async def create_project(req: CreateProjectRequest):
-    """Create a new project."""
+    """Create a new project. If `folder` is provided and is empty, seed it with the
+    standard recon txt templates (target.txt, AllSubs.txt, AliveSubs.txt, urls.txt,
+    param.txt, js.txt, xss.txt, lfi.txt, XSSvulnerable.txt, sqlmap.txt) sourced from
+    the live bug-bounty hunting workflow."""
     project = memory_engine.create_project(req.name, req.scope)
     memory_engine.save_project(project)
-    return {"project_id": project.project_id, "name": project.name}
+
+    seeded_files: list[str] = []
+    folder_status = "not_provided"
+    if req.folder:
+        from pathlib import Path as _P
+        from .seed_templates import seed_empty_folder
+        folder_path = _P(req.folder)
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+            # Only seed if the folder is empty - never clobber user data
+            is_empty = not any(folder_path.iterdir())
+            if is_empty:
+                seeded_files = seed_empty_folder(folder_path, target=req.target or "example.com")
+                folder_status = "seeded_empty_folder"
+            else:
+                folder_status = "folder_has_files"
+            # Persist the folder binding on the project so it shows up everywhere
+            project.folder = str(folder_path)
+            memory_engine.save_project(project)
+        except Exception as exc:
+            logger.error("folder_seed_failed", error=str(exc), folder=req.folder)
+            folder_status = f"error: {exc}"
+
+    return {
+        "project_id": project.project_id,
+        "name": project.name,
+        "folder": req.folder,
+        "folder_status": folder_status,
+        "seeded_files": seeded_files,
+    }
 
 
 @app.get("/api/projects")
@@ -2992,3 +3026,137 @@ async def run_tool(req: ToolRunRequest):
 # ===== V3 endpoints (Project Workspace, Terminal, Agent Knowledge) =====
 from .v3_endpoints import register_v3_endpoints
 v3_managers = register_v3_endpoints(app, settings, memory_engine)
+
+# ============ AI REPORT GENERATION ============
+
+class AIReportRequest(BaseModel):
+    view: str = "full"  # executive | technical | full
+    include_severity: list[str] | None = None  # filter to e.g. ["critical", "high"]
+
+
+@app.post("/api/projects/{project_id}/report")
+async def generate_ai_report(project_id: str, req: AIReportRequest):
+    """Have the configured model write a Blank.md report from the project's findings.
+
+    The AI picks the findings it considers worth reporting to the company and
+    drafts a professional report in the ZephrFish/BugBountyTemplates/Blank.md shape.
+    """
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = list(getattr(project, "findings", []) or [])
+
+    # Optional severity filter
+    if req.include_severity:
+        wanted = {s.lower() for s in req.include_severity}
+        findings = [f for f in findings if str(f.get("severity", "")).lower() in wanted]
+
+    if not findings:
+        return {
+            "status": "ok",
+            "model": None,
+        }
+    system_prompt = (
+        "You are a senior security auditor. You are given a structured list of findings. Your job is to (1) decide which findings are worth reporting to the "
+        "company, (2) write a polished Markdown report that includes ONLY those findings and NOTHING ELSE, "
+        "(3) add a short Executive Summary, a Technical Summary, a Remediation Summary, and "
+        "an overall security score at the bottom. Severity tags, CWE refs, and OWASP Top 10 "
+        "references must be preserved when present. CRITICAL: Do NOT fabricate, invent, or hallucinate any findings, vulnerabilities, CVEs, endpoints, or details that are not explicitly present in the supplied list. If the list is empty or contains no actionable items, respond with a brief empty-state report stating no findings were supplied. Be concise, professional, and actionable. Output ONLY "
+        "the Markdown - no preamble."
+    )
+    user_prompt = (
+    f"Project: {project.name}\n"
+    f"Target: {getattr(project, 'folder', 'unspecified')}\n"
+     f"Total findings supplied: {len(findings)}\n"
+        f"\1`n"
+        f"\1`n"
+        "Produce the Blank.md report now."
+    )
+
+    if llm_router is None:
+        return {
+            "status": "error",
+            "error": "LLM router not initialized. Configure a provider in Settings first.",
+            "findings_count": len(findings),
+        }
+
+    from .providers import LLMMessage, MessageRole
+    messages = [
+        LLMMessage(role=MessageRole.SYSTEM, content=system_prompt),
+        LLMMessage(role=MessageRole.USER, content=user_prompt),
+    ]
+    model_name = settings.models.report
+    try:
+        response = await llm_router.complete(messages, model_name, max_tokens=4000)
+        return {
+            "status": "ok",
+            "report_markdown": response.content,
+            "findings_included": len(findings),
+            "model": model_name,
+            "latency_ms": getattr(response, "latency_ms", None),
+        }
+    except Exception as exc:
+        logger.error("ai_report_failed", error=str(exc), project_id=project_id)
+        raise HTTPException(status_code=500, detail=f"AI report failed: {exc}")
+
+
+
+# ============ FULL PROJECT SCAN ============
+
+class FullScanRequest(BaseModel):
+    target_url: str | None = None
+
+
+@app.post("/api/projects/{project_id}/full-scan")
+async def full_project_scan(project_id: str, req: FullScanRequest):
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if llm_router is None:
+        raise HTTPException(status_code=503, detail="LLM router not initialized. Configure a provider in Settings first.")
+
+    memory_engine.add_investigation_log({"action": "full_scan_started", "target_url": req.target_url or ""})
+
+    pipeline = [
+        ("recon", {"action": "discover", "input_data": {"scope": {"domains": [getattr(project, "folder", "")] or ["example.com"]}, "target_url": req.target_url}}),
+        ("code-review", {"action": "analyze", "input_data": {"scope": "full"}}),
+        ("threat-modeling", {"action": "analyze", "input_data": {"scope": "full"}}),
+        ("dependency", {"action": "scan", "input_data": {"scope": "full"}}),
+        ("debate", {"action": "validate", "input_data": {}}),
+    ]
+
+    results = []
+    findings_total = 0
+    started_at = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+
+    for agent_name, payload in pipeline:
+        step_start = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+        step = {"agent": agent_name, "status": "running", "started_at": step_start}
+        try:
+            agent = _get_or_create_agent(project_id, agent_name)
+            before = len(getattr(agent, "findings", []) or [])
+            task = TaskPayload(task_id=str(uuid.uuid4()), task_type=agent_name, input_data=payload.get("input_data", {}))
+            result = await agent.execute_task(task)
+            after = len(getattr(agent, "findings", []) or [])
+            created = max(0, after - before)
+            findings_total += created
+            step.update({"status": "completed", "findings_created": created, "completed_at": __import__("datetime").datetime.utcnow().isoformat() + "Z"})
+            memory_engine.add_investigation_log({"action": f"{agent_name}_completed", "findings": created})
+        except Exception as exc:
+            step.update({"status": "error", "error": str(exc)[:200]})
+            memory_engine.add_investigation_log({"action": f"{agent_name}_failed", "error": str(exc)[:200]})
+        results.append(step)
+
+    memory_engine.add_investigation_log({"action": "full_scan_completed", "findings_total": findings_total, "agents_run": len(pipeline)})
+    return {
+        "status": "ok",
+        "project_id": project_id,
+        "target_url": req.target_url,
+        "started_at": started_at,
+        "completed_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+        "agents_run": len(pipeline),
+        "findings_total": findings_total,
+        "no_findings": findings_total == 0,
+        "results": results,
+    }

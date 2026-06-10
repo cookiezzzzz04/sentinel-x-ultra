@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+*.egg
+.venv/
+venv/
+env/
+ENV/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+config.local.json
+api_keys.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Storage (user data, API keys, project memory)
+.sentinel-x/
+storage/
+*.db
+*.sqlite
+*.sqlite3
+
+# Agent state
+agent_models.json
+agent_models.local.json
+investigation_log.json
+findings.json
+
+# Logs
+*.log
+logs/
+nohup.out
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.json
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+desktop.ini
+$RECYCLE.BIN/
+
+# One-shot fix scripts (not part of the product) - use full filenames
+_wire_new_scan.py
+_patch_app.py
+patch_recon.py
+
+# Temp scripts created during interactive sessions (not part of the product)
+run_test_scan.py
+seed_real_findings.py
+fix_fake_data.py
+server_log.txt
+nul

@@ -121,6 +121,7 @@ function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
 
   const [loading, setLoading] = useState(true)
+  const [isFullScanning, setIsFullScanning] = useState(false)
 
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
 
@@ -212,10 +213,11 @@ function App() {
 
 
 
-  const createProject = async (name: string) => {
-
+  const createProject = async (name: string, folder?: string, target?: string) => {
     try {
-
+      const body: any = { name }
+      if (folder) body.folder = folder
+      if (target) body.target = target
       const res = await fetch('/api/projects', {
 
         method: 'POST',
@@ -653,10 +655,21 @@ function App() {
 
               fontSize: '13px'
 
-            }}>
-
-              + New Scan
-
+            }} onClick={async () => {
+              if (!currentProject) { addNotification('error', 'Open a project first'); return }
+              setIsFullScanning(true)
+              try {
+                const res = await fetch('/api/projects/' + currentProject.project_id + '/full-scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+                if (!res.ok) throw new Error('HTTP ' + res.status)
+                const data = await res.json()
+                addNotification(data.findings_total === 0 ? 'info' : 'success', data.findings_total === 0 ? 'Full scan complete: no findings across ' + (data.agents_run ?? 0) + ' agents' : ('Full scan complete: ' + data.findings_total + ' findings across ' + (data.agents_run ?? 0) + ' agents'))
+              } catch (e: any) {
+                addNotification('error', 'Scan failed: ' + (e?.message || 'unknown'))
+              } finally {
+                setIsFullScanning(false)
+              }
+            }} disabled={isFullScanning}>
+              {isFullScanning ? '\u25cf Scanning...' : '+ Full Scan'}
             </button>
 
           </div>
@@ -915,13 +928,11 @@ function DashboardView({ projects, onCreateProject, onDeleteProject, onOpenProje
 
 
 
-  // Mock stats for demo
-
   const stats = {
 
-    totalFindings: projects.reduce((sum, p) => sum + (p.findings_count || 0), 12),
+    totalFindings: projects.reduce((sum, p) => sum + (p.findings_count || 0), 0),
 
-    criticalIssues: projects.reduce((sum, p) => sum + (p.critical_count || 0), 3),
+    criticalIssues: projects.reduce((sum, p) => sum + (p.critical_count || 0), 0),
 
     activeProjects: projects.length,
 
@@ -949,8 +960,6 @@ function DashboardView({ projects, onCreateProject, onDeleteProject, onOpenProje
 
           color="#00d4ff"
 
-          trend="+12%"
-
         />
 
         <StatCard 
@@ -962,8 +971,6 @@ function DashboardView({ projects, onCreateProject, onDeleteProject, onOpenProje
           icon="🚨"
 
           color="#ff4444"
-
-          trend="+2"
 
         />
 
@@ -1564,7 +1571,7 @@ function ProjectView({ project, onBack, addNotification }: {
 
 }) {
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'input' | 'analysis' | 'agents' | 'findings'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'input' | 'analysis' | 'agents' | 'findings' | 'ai-report'>('overview')
   const [analysisFocus, setAnalysisFocus] = useState<'general' | 'threat-hunt' | 'supply-chain'>('general')
 
   const [agentOutput, setAgentOutput] = useState<string>('')
@@ -1616,6 +1623,7 @@ function ProjectView({ project, onBack, addNotification }: {
     { id: 'analysis',  label: 'Analysis',       icon: '🔍', bio: 'Run code review, web testing, threat hunt, and supply-chain analysis from a single workspace. Pick a focus from the dropdown to switch modes.' },
     { id: 'agents',    label: 'Agents',         icon: '🤖', bio: 'Orchestrate the multi-agent framework: recon, code review, threat modeling, debate, remediation, and Phase 5 advanced agents.' },
     { id: 'findings',  label: 'Findings',       icon: '🎯', bio: 'Browse validated findings, view evidence, attack chains, and export reports in the Blank.md shape.' },
+    { id: 'ai-report', label: 'AI Report',       icon: '📝', bio: 'Have the configured model write a Blank.md report from the findings it thinks are worth reporting to the company.' },
   ]
 
 
@@ -1770,6 +1778,9 @@ function ProjectView({ project, onBack, addNotification }: {
         <FindingsPanel />
 
       )}
+      {activeTab === 'ai-report' && (
+        <AIReportPanel projectId={project.project_id} />
+      )}
 
     </div>
 
@@ -1780,20 +1791,44 @@ function ProjectView({ project, onBack, addNotification }: {
 
 
 function OverviewTab({ project }: { project: Project }) {
-
+  const [activity, setActivity] = useState<any[]>([])
+  const [realStats, setRealStats] = useState({ findings: 0, critical: 0, high: 0, medium: 0, attack_paths: 0, vulnerabilities: 0 })
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [a, s2] = await Promise.all([
+          fetch(`/api/projects/${project.project_id}/activity`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+          fetch(`/api/projects/${project.project_id}/analysis-summary`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        ])
+        if (cancelled) return
+        setActivity(a.events || [])
+        setRealStats({
+          findings: ((s2 as any).code_analysis?.patterns_found || 0) + ((s2 as any).web_analysis?.vulnerabilities || 0),
+          critical: (s2 as any).code_analysis?.critical_issues || 0,
+          high: 0,
+          medium: 0,
+          attack_paths: (s2 as any).knowledge_graph?.attack_paths || 0,
+          vulnerabilities: (s2 as any).web_analysis?.vulnerabilities || 0,
+        })
+      } catch (e) { /* keep zeros */ }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [project.project_id])
   return (
 
     <div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
 
-        <StatCard label="Findings" value="12" icon="🎯" color="#00d4ff" />
+        <StatCard label="Findings" value={String(realStats.findings || 0)} icon="🎯" color="#00d4ff" />
 
-        <StatCard label="Critical" value="3" icon="🚨" color="#ff4444" />
+        <StatCard label="Critical" value={String(realStats.critical || 0)} icon="🚨" color="#ff4444" />
 
-        <StatCard label="High" value="5" icon="⚠️" color="#ff8844" />
+        <StatCard label="High" value={String(realStats.high || 0)} icon="⚠️" color="#ff8844" />
 
-        <StatCard label="Medium" value="4" icon="📋" color="#ffaa00" />
+        <StatCard label="Medium" value={String(realStats.medium || 0)} icon="📋" color="#ffaa00" />
 
       </div>
 
@@ -1819,17 +1854,13 @@ function OverviewTab({ project }: { project: Project }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-            {[
-
-              { time: '2 min ago', action: 'SAST Scan completed', status: 'success', details: '12 findings' },
-
-              { time: '15 min ago', action: 'Threat Modeling run', status: 'success', details: '3 attack paths' },
-
-              { time: '1 hour ago', action: 'Dependency scan', status: 'warning', details: '5 vulnerabilities' },
-
-              { time: '2 hours ago', action: 'Project created', status: 'info', details: project.name },
-
-            ].map((item, i) => (
+            {activity.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌱</div>
+                <div style={{ fontWeight: '600', marginBottom: '4px', color: '#888' }}>No activity yet</div>
+                <div>Run an agent from the Agents tab to populate this feed. Until then, every counter below is 0.</div>
+              </div>
+            ) : activity.map((item: any, i: number) => (
 
               <div key={i} style={{
 
@@ -1961,7 +1992,7 @@ function OverviewTab({ project }: { project: Project }) {
 
             <div style={{ fontSize: '14px', color: '#00ff88', fontWeight: '600' }}>Good Security Posture</div>
 
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>Based on 12 findings</div>
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>Based on {realStats.findings || 0} findings</div>
 
           </div>
 
@@ -2351,17 +2382,7 @@ function getPhase5Capabilities(agentId: string): string[] {
 
 function FindingsPanel() {
 
-  const [findings] = useState<Finding[]>([
-
-    { id: '1', type: 'sql_injection', severity: 'critical', title: 'SQL Injection in User Query', description: 'User input directly concatenated into SQL query', location: 'src/handlers/user.py:45', cwe: 'CWE-89', owasp: ['A1', 'A3'] },
-
-    { id: '2', type: 'xss', severity: 'high', title: 'Cross-Site Scripting (XSS)', description: 'Unsanitized user input rendered without encoding', location: 'src/views/home.html:23', cwe: 'CWE-79', owasp: ['A7'] },
-
-    { id: '3', type: 'auth', severity: 'high', title: 'Weak Authentication Mechanism', description: 'Missing rate limiting on login endpoint', location: 'src/auth/login.py:12', cwe: 'CWE-307', owasp: ['A2'] },
-
-    { id: '4', type: 'crypto', severity: 'medium', title: 'Weak Cryptographic Hash', description: 'Using MD5 for password hashing', location: 'src/auth/password.py:8', cwe: 'CWE-328', owasp: ['A3'] },
-
-  ])
+  const [findings] = useState<Finding[]>([])
 
 
 
@@ -3131,7 +3152,7 @@ function _AutoAgentSelectView() {
 
   const [scanResults, setScanResults] = useState<any>(null)
 
-  const [isScanning, setIsScanning] = useState(false)
+  const [isScanning, setIsFullScanning] = useState(false)
 
   
 
@@ -3470,7 +3491,7 @@ function _AutoAgentSelectView() {
 
     if (!selectedVulnType) return
 
-    setIsScanning(true)
+    setIsFullScanning(true)
 
     setScanResults(null)
 
@@ -3502,7 +3523,7 @@ function _AutoAgentSelectView() {
 
       })
 
-      setIsScanning(false)
+      setIsFullScanning(false)
 
     }, 1500)
 
@@ -4949,3 +4970,87 @@ function LoadingSpinner() {
 
 
 export default App
+
+// ============ AI REPORT PANEL ============
+
+function AIReportPanel({ projectId }: { projectId: string }) {
+  const [report, setReport] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [view, setView] = useState<'executive' | 'technical' | 'full'>('full')
+  const [stats, setStats] = useState<any>(null)
+
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/analysis-summary`).then(r => r.json()).then(setStats).catch(() => {})
+  }, [projectId])
+
+  const generate = async () => {
+    setLoading(true); setError(''); setReport('')
+    try {
+      const res = await fetch(`/api/projects/${projectId}/report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ view }),
+      })
+      const data = await res.json()
+      if (data.status === 'error') { setError(data.error || 'Report failed'); return }
+      setReport(data.report_markdown || '')
+    } catch (e: any) { setError(String(e)) }
+    finally { setLoading(false) }
+  }
+
+  const download = () => {
+    const blob = new Blob([report], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `sentinel-x-report-${projectId}.md`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div>
+      <div style={{ background: 'linear-gradient(135deg, rgba(170,136,255,0.1), rgba(0,212,255,0.05))', borderRadius: '12px', padding: '20px', border: '1px solid rgba(170,136,255,0.2)', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '4px' }}><span style={{ background: 'linear-gradient(90deg, #aa88ff, #00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>📝 AI Report</span></h2>
+            <p style={{ fontSize: '13px', color: '#888' }}>The configured model writes a Blank.md report from the findings it thinks are worth reporting to the company.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select value={view} onChange={e => setView(e.target.value as any)} style={{ padding: '8px 12px', background: '#0a0a0a', color: '#fff', border: '1px solid #333', borderRadius: '6px', fontSize: '12px' }}>
+              <option value='executive'>Executive</option>
+              <option value='technical'>Technical</option>
+              <option value='full'>Full</option>
+            </select>
+            <button onClick={generate} disabled={loading} style={{ padding: '8px 20px', background: loading ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #aa88ff, #00d4ff)', color: loading ? '#666' : '#fff', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: '700' }}>
+              {loading ? '⏳ Writing...' : '✨ Generate'}
+            </button>
+            {report && (
+              <button onClick={download} style={{ padding: '8px 16px', background: 'rgba(0,255,136,0.1)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                ⬇ Download .md
+              </button>
+            )}
+          </div>
+        </div>
+        {stats && (
+          <div style={{ display: 'flex', gap: '16px', marginTop: '12px', fontSize: '12px', color: '#888' }}>
+            <span>🎯 {stats.code_analysis?.patterns_found || 0} code patterns</span>
+            <span>🌐 {stats.web_analysis?.vulnerabilities || 0} web vulns</span>
+            <span>🛡️ {stats.knowledge_graph?.attack_paths || 0} attack paths</span>
+          </div>
+        )}
+        {error && <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(255,68,68,0.1)', color: '#ff4444', borderRadius: '6px', fontSize: '12px' }}>⚠️ {error}</div>}
+      </div>
+      <div style={{ background: 'rgba(10,10,15,0.95)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '20px', minHeight: '400px' }}>
+        {report ? (
+          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: '13px', color: '#e0e0e0', lineHeight: '1.6', margin: 0 }}>{report}</pre>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '80px 20px', color: '#666' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📝</div>
+            <div style={{ fontSize: '14px', marginBottom: '8px', color: '#888' }}>No report yet</div>
+            <div style={{ fontSize: '12px' }}>Click <span style={{ color: '#aa88ff', fontWeight: '600' }}>Generate</span> to have the model draft a Blank.md report from the project's findings.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+

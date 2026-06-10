@@ -35,12 +35,9 @@ def start(host, port, open_browser, save_config):
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
 
-    click.echo(f"""
-╔══════════════════════════════════════════════════════════════╗
-║                   SENTINEL-X ULTRA v0.1.0                    ║
-║        Autonomous Security Analysis Intelligence             ║
-╚══════════════════════════════════════════════════════════════╝
-    """)
+    click.echo("=" * 66)
+    click.echo("  SENTINEL-X ULTRA v0.1.0 - Autonomous Security Analysis Intelligence")
+    click.echo("=" * 66)
 
     click.echo(f"Starting server at http://{bind_host}:{bind_port}")
     click.echo("Press Ctrl+C to stop the server")
