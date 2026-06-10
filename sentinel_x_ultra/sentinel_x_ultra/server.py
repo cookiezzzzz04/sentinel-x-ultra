@@ -2987,3 +2987,8 @@ async def run_tool(req: ToolRunRequest):
             "error": f"Unknown tool: {req.tool_name}"
         }
 
+
+
+# ===== V3 endpoints (Project Workspace, Terminal, Agent Knowledge) =====
+from .v3_endpoints import register_v3_endpoints
+v3_managers = register_v3_endpoints(app, settings, memory_engine)

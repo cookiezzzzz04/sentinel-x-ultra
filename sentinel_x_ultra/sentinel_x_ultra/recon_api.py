@@ -14,7 +14,6 @@ import asyncio
 from .recon_tools import (
     get_recon_workflow,
     install_all_tools,
-    BigBountyReconTool,
     SubFinderTool,
     SubEnumTool,
     WaybackUrlsTool,
@@ -66,7 +65,6 @@ async def get_recon_status():
         "methodology": {
             "name": "Bug Bounty Reconnaissance Guide",
             "steps": [
-                "1. Google Dorking (BigBountyRecon) - Initial reconnaissance using 58 Google dorking techniques",
                 "2. Subdomain Enumeration (SubFinder + SubEnum) - Passive subdomain discovery",
                 "3. HTTP Probing (httpx) - Find alive/responsive hosts",
                 "4. URL Collection (waybackurls/gau) - Historical URL enumeration",
@@ -76,7 +74,6 @@ async def get_recon_status():
                 "8. Nuclei Scanning - Template-based vulnerability scanning"
             ],
             "sources": [
-                "https://github.com/Viralmaniar/BigBountyRecon",
                 "https://github.com/projectdiscovery/subfinder",
                 "https://github.com/bing0o/SubEnum",
                 "https://github.com/tomnomnom/waybackurls",
@@ -146,119 +143,39 @@ async def run_recon_scan(req: ReconRequest):
                 }
             }
         elif req.phase == "dorking":
-            result = await workflow.bigbountyrecon.scan(req.target)
-            return _format_recon_result(result, req.target, "dorking")
-        elif req.phase == "subdomains":
-            r1 = await workflow.subfinder.scan(req.target)
-            r2 = await workflow.subenum.scan(req.target)
-            combined = _combine_results([r1, r2])
-            return _format_recon_result(combined, req.target, "subdomains")
-        elif req.phase == "http_probing":
-            # Requires targets from previous phase
-            if not req.options or "targets" not in req.options:
-                return {"status": "error", "error": "HTTP probing requires 'targets' in options"}
-            result = await workflow.httpx.scan(req.options["targets"])
-            return _format_recon_result(result, req.target, "http_probing")
-        elif req.phase == "urls":
-            if not req.options or "targets" not in req.options:
-                return {"status": "error", "error": "URL collection requires 'targets' in options"}
-            result = await workflow.waybackurls.scan(req.options["targets"])
-            return _format_recon_result(result, req.target, "urls")
-        elif req.phase == "xss":
-            if not req.options or "targets" not in req.options:
-                return {"status": "error", "error": "XSS scanning requires 'targets' in options"}
-            result = await workflow.dalfox.scan(wordlist_file=workflow._write_urls_to_file(req.options["targets"]), mode="file")
-            return _format_recon_result(result, req.target, "xss")
-        elif req.phase == "sqli":
-            result = await workflow.sqlifinder.scan(target=req.target)
-            return _format_recon_result(result, req.target, "sqli")
-        elif req.phase == "vulnerabilities":
-            if not req.options or "targets" not in req.options:
-                return {"status": "error", "error": "Nuclei scanning requires 'targets' in options"}
-            result = await workflow.nuclei.scan(req.options["targets"])
-            return _format_recon_result(result, req.target, "vulnerabilities")
-        else:
-            return {"status": "error", "error": f"Unknown phase: {req.phase}"}
+            tools = {
+                "subfinder": {
+                    "name": "SubFinder",
+                    "description": "Passive subdomain enumeration",
+                    "methods": ["scan(target, recursive, all_sources)"],
+                    "install": "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
+                    "methodology": "subfinder -d {target} -recursive -all"
+                },
+                "waybackurls": {
+                    "name": "Waybackurls",
+                    "description": "Pull URLs from Wayback Machine",
+                    "methods": ["scan(target)"],
+                    "install": "go install github.com/tomnomnom/waybackurls@latest",
+                    "methodology": "echo {target} | waybackurls"
+                },
+                "gau": {
+                    "name": "Gau",
+                    "description": "Fetch known URLs from AlienVault, Wayback, Common Crawl",
+                    "methods": ["scan(target)"],
+                    "install": "go install github.com/lc/gau/v2/cmd/gau@latest",
+                    "methodology": "gau {target}"
+                },
+                "httpx": {
+                    "name": "Httpx",
+                    "description": "HTTP probing and technology detection",
+                    "methods": ["scan(urls)"],
+                    "install": "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest",
+                    "methodology": "httpx -l urls.txt"
+                }
+            }
+            return tools
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
-
-@recon_router.get("/tools/{tool_name}")
-async def get_tool_info(tool_name: str):
-    """Get information about a specific reconnaissance tool."""
-    tools = {
-        "bigbountyrecon": {
-            "name": "BigBountyRecon",
-            "description": "Google Dorking reconnaissance tool using 58 different techniques",
-            "methods": ["scan(target, dork_type)"],
-            "install": "git clone https://github.com/Viralmaniar/BigBountyRecon",
-            "methodology": [
-                "site:*.{target} inurl:*admin|login* - Login page discovery",
-                "site:*.{target} intext:sql syntax near - SQL injection patterns",
-                "site:*.{target} inurl:/geoserver/ows?service=wfs - Geoserver enumeration"
-            ]
-        },
-        "subfinder": {
-            "name": "SubFinder",
-            "description": "Passive subdomain enumeration tool",
-            "methods": ["scan(target, recursive, all_sources)"],
-            "install": "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
-            "methodology": ["subfinder -d {target} -all -recursive"]
-        },
-        "subenum": {
-            "name": "SubEnum",
-            "description": "Multi-source subdomain enumeration",
-            "methods": ["scan(target, sources)"],
-            "install": "git clone https://github.com/bing0o/SubEnum",
-            "methodology": ["subenum -l target.txt -u wayback,crt,abuseipdb,bufferover,Findomain,Subfinder,Amass,Assetfinder"]
-        },
-        "waybackurls": {
-            "name": "Waybackurls",
-            "description": "Collect historical URLs from Wayback Machine",
-            "methods": ["scan(domains)"],
-            "install": "go install github.com/tomnomnom/waybackurls@latest",
-            "methodology": ["cat domains.txt | waybackurls"]
-        },
-        "dalfox": {
-            "name": "Dalfox",
-            "description": "XSS vulnerability scanner",
-            "methods": ["scan(target, wordlist_file, mode)"],
-            "install": "go install github.com/hahwul/dalfox/v2@latest",
-            "methodology": ["dalfox file xss_urls.txt"]
-        },
-        "sqlifinder": {
-            "name": "Sqlifinder",
-            "description": "SQL injection vulnerability finder",
-            "methods": ["scan(target, target_file)"],
-            "install": "git clone https://github.com/americo/sqlifinder",
-            "methodology": ["python3 sqlifinder.py -d domain.com"]
-        },
-        "httpx": {
-            "name": "Httpx",
-            "description": "Fast HTTP probe tool for finding alive hosts",
-            "methods": ["scan(targets)"],
-            "install": "go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
-            "methodology": ["cat subs.txt | httpx -o alive.txt"]
-        },
-        "nuclei": {
-            "name": "Nuclei",
-            "description": "Template-based vulnerability scanner",
-            "methods": ["scan(targets, templates, tags, severity)"],
-            "install": "go install github.com/projectdiscovery/nuclei/v2@latest",
-            "methodology": ["nuclei -list urls.txt -t vulnerabilities,cves"]
-        },
-        "gau": {
-            "name": "Gau",
-            "description": "Get All URLs - Alternative to waybackurls",
-            "methods": ["scan(domains)"],
-            "install": "go install github.com/lc/gau/v2/cmd/gau@latest",
-            "methodology": ["gau domain.com"]
-        }
-    }
-    
-    if tool_name.lower() in tools:
-        return tools[tool_name.lower()]
-    return {"error": f"Unknown tool: {tool_name}"}
 
 
 @recon_router.get("/methodology")
@@ -271,7 +188,6 @@ async def get_methodology():
             {
                 "phase": 1,
                 "name": "Google Dorking",
-                "tool": "BigBountyRecon",
                 "commands": [
                     "site:*.domain.com inurl:*admin | login",
                     "site:*.domain.com intext:sql syntax near",
@@ -348,8 +264,7 @@ async def get_methodology():
             }
         ],
         "tools_integrated": [
-            {"name": "BigBountyRecon", "source": "https://github.com/Viralmaniar/BigBountyRecon"},
-            {"name": "SubFinder", "source": "https://github.com/projectdiscovery/subfinder"},
+{"name": "SubFinder", "source": "https://github.com/projectdiscovery/subfinder"},
             {"name": "SubEnum", "source": "https://github.com/bing0o/SubEnum"},
             {"name": "waybackurls", "source": "https://github.com/tomnomnom/waybackurls"},
             {"name": "Dalfox", "source": "https://github.com/hahwul/dalfox"},

@@ -5,7 +5,6 @@ This module provides integrated access to various reconnaissance tools following
 the methodology from the comprehensive bug bounty reconnaissance guide:
 
 Tools Integrated:
-1. BigBountyRecon - Google Dorking and reconnaissance
 2. SubFinder - Passive subdomain enumeration
 3. SubEnum - Multi-source subdomain enumeration
 4. Waybackurls - Historical URL collection
@@ -16,7 +15,6 @@ Tools Integrated:
 9. Gau - Get All URLs (alternative to waybackurls)
 
 Methodology Flow:
-1. Google Dorking (BigBountyRecon) for initial reconnaissance
 2. Subdomain enumeration (SubFinder + SubEnum)
 3. HTTP probing (httpx) to find alive hosts
 4. URL collection (waybackurls/gau)
@@ -268,11 +266,6 @@ async def install_all_tools() -> Dict[str, Any]:
     try:
         _ensure_sentinelx_dir()
         
-        # BigBountyRecon
-        bbr_path = os.path.join(SENTINELX_TOOLS_DIR, "BigBountyRecon")
-        if not os.path.exists(bbr_path):
-            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/Viralmaniar/BigBountyRecon", bbr_path], 
-                          capture_output=True, timeout=120)
         results["bigbountyrecon"] = {"status": "success" if os.path.exists(bbr_path) else "pending", "path": bbr_path}
         
         # SubEnum
@@ -342,9 +335,7 @@ class ReconResult:
         return asdict(self)
 
 
-class BigBountyReconTool:
     """
-    BigBountyRecon - Google Dorking reconnaissance tool.
     
     Performs reconnaissance using 58 different Google dorking techniques
     to discover endpoints, login pages, SQL errors, geoserver instances, etc.
@@ -355,30 +346,24 @@ class BigBountyReconTool:
         site:*.domain.com inurl:/geoserver/ows?service=wfs
     
     Usage:
-        tool = BigBountyReconTool()
         result = await tool.scan("example.com")
     """
     
     def __init__(self):
         self.name = "bigbountyrecon"
-        self.install_url = "https://github.com/Viralmaniar/BigBountyRecon"
     
     def is_available(self) -> bool:
-        """Check if BigBountyRecon is installed."""
         # Check for .exe (C# .NET compiled binary) - works on Windows natively
         # and can run via mono on Unix-like systems
         paths = [
-            os.path.join(SENTINELX_TOOLS_DIR, "BigBountyRecon", "BigBountyRecon.exe"),
-            os.path.expanduser("~/BigBountyRecon/BigBountyRecon.exe"),
         ]
         for path in paths:
             if os.path.exists(path):
                 return True
         return False
     
-    async def scan(self, target: str, dork_type: str = "all") -> ReconResult:
+    async def scan(self, target: str, dork_type: str = "all") -> "ReconResult":
         """
-        Run BigBountyRecon scan.
         
         Args:
             target: Target domain (e.g., "example.com")
@@ -390,8 +375,6 @@ class BigBountyReconTool:
         raw_output = ""
         
         tool_paths = [
-            os.path.join(SENTINELX_TOOLS_DIR, "BigBountyRecon", "BigBountyRecon.exe"),
-            os.path.expanduser("~/BigBountyRecon/BigBountyRecon.exe"),
         ]
         
         tool_path = None
@@ -401,7 +384,6 @@ class BigBountyReconTool:
                 break
         
         if not tool_path:
-            errors.append(f"BigBountyRecon not found. Install from: {self.install_url}")
             return ReconResult(
                 tool=self.name,
                 target=target,
@@ -514,7 +496,7 @@ class SubFinderTool:
         recursive: bool = True,
         all_sources: bool = True,
         timeout: int = 300
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Run subfinder subdomain enumeration.
         
@@ -625,7 +607,7 @@ class SubEnumTool:
         target: str,
         sources: List[str] = None,            output_file: str = None,
         timeout: int = 600
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Run SubEnum subdomain enumeration.
         
@@ -756,7 +738,7 @@ class WaybackUrlsTool:
         domains: List[str],
         output_file: str = None,
         timeout: int = 300
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Collect Wayback URLs for domains.
         
@@ -854,7 +836,7 @@ class GauTool:
         domains: List[str],
         output_file: str = None,
         timeout: int = 300
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """Collect URLs using gau."""
         start_time = datetime.now()
         errors = []
@@ -946,7 +928,7 @@ class HttpxTool:
         targets: List[str],
         output_file: str = None,
         timeout: int = 300
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Check which targets are alive.
         
@@ -1066,7 +1048,7 @@ class DalfoxTool:
         wordlist_file: str = None,
         mode: str = "url",
         timeout: int = 600
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Run Dalfox XSS scan.
         
@@ -1180,7 +1162,7 @@ class SqlifinderTool:
         target: str = None,
         target_file: str = None,
         timeout: int = 600
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Run Sqlifinder scan.
         
@@ -1297,7 +1279,7 @@ class NucleiTool:
         output_file: str = None,
         severity: List[str] = None,
         timeout: int = 600
-    ) -> ReconResult:
+    ) -> "ReconResult":
         """
         Run nuclei vulnerability scan.
         
@@ -1406,7 +1388,6 @@ class ReconnaissanceWorkflow:
     Integrated reconnaissance workflow following the methodology from the guide.
     
     Flow:
-    1. Google Dorking (BigBountyRecon) for initial reconnaissance
     2. Subdomain enumeration (SubFinder + SubEnum)
     3. HTTP probing (httpx) to find alive hosts
     4. URL collection (waybackurls/gau)
@@ -1417,7 +1398,6 @@ class ReconnaissanceWorkflow:
     """
     
     def __init__(self):
-        self.bigbountyrecon = BigBountyReconTool()
         self.subfinder = SubFinderTool()
         self.subenum = SubEnumTool()
         self.waybackurls = WaybackUrlsTool()
@@ -1499,7 +1479,7 @@ class ReconnaissanceWorkflow:
         
         return results
     
-    async def run_recon_phase(self, phase: str, target: str, targets: List[str] = None) -> ReconResult:
+    async def run_recon_phase(self, phase: str, target: str, targets: List[str] = None) -> "ReconResult":
         """
         Run a specific reconnaissance phase.
         
