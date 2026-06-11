@@ -86,6 +86,44 @@ from .agents.phase5 import (
 # Reconnaissance tools integration (Phase 3 extended)
 from .recon_api import register_recon_endpoints
 
+# Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
+from .bug_bounty import (
+    BugBountyOrchestrator,
+    URLParserAgent,
+    PolicyEnforcerAgent,
+    ScopeGuardianAgent,
+    PassiveIntelligenceAgent,
+    ActiveEnumerationAgent,
+    VulnerabilityScannerAgent,
+    ValidationEngineAgent,
+    ExploitationAgent,
+    AnalysisAgent,
+    ReportGenerationAgent,
+    get_full_system_prompt,
+    FOUNDATIONAL_PRINCIPLES,
+    DECISION_HIERARCHY,
+    AGENT_ARCHITECTURE,
+)
+
+# Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
+from .bug_bounty import (
+    BugBountyOrchestrator,
+    URLParserAgent,
+    PolicyEnforcerAgent,
+    ScopeGuardianAgent,
+    PassiveIntelligenceAgent,
+    ActiveEnumerationAgent,
+    VulnerabilityScannerAgent,
+    ValidationEngineAgent,
+    ExploitationAgent,
+    AnalysisAgent,
+    ReportGenerationAgent,
+    get_full_system_prompt,
+    FOUNDATIONAL_PRINCIPLES,
+    DECISION_HIERARCHY,
+    AGENT_ARCHITECTURE,
+)
+
 structlog.configure(
     processors=[
         structlog.processors.add_log_level,
@@ -170,6 +208,10 @@ phase4_engines: dict[str, dict[str, Any]] = {}  # project_id -> {engine_type: en
 
 # Phase 5 - Advanced Security Operations
 phase5_agents: dict[str, dict[str, Any]] = {}  # project_id -> {agent_type: agent_instance}
+
+
+# Bug Bounty Orchestrator (10-agent pipeline with ethical rules)
+bug_bounty_orchestrator: BugBountyOrchestrator | None = None
 
 # Path to frontend dist (relative to this file)
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend/dist"
@@ -1174,10 +1216,13 @@ async def run_recon_agent(project_id: str, req: AgentTaskRequest):
 
     try:
         agent = _get_or_create_agent(project_id, "recon")
+        agent_input = dict(req.input_data)
+        agent_input["bug_bounty_system_prompt"] = bb_system_prompt
+        agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
             task_type="recon",
-            input_data=req.input_data,
+            input_data=agent_input,
         )
         result = await agent.execute_task(task)
         
@@ -1203,10 +1248,13 @@ async def run_code_review_agent(project_id: str, req: AgentTaskRequest):
 
     try:
         agent = _get_or_create_agent(project_id, "code_review")
+        agent_input = dict(req.input_data)
+        agent_input["bug_bounty_system_prompt"] = bb_system_prompt
+        agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
             task_type="code_review",
-            input_data=req.input_data,
+            input_data=agent_input,
         )
         result = await agent.execute_task(task)
         
@@ -1232,10 +1280,13 @@ async def run_threat_modeling_agent(project_id: str, req: AgentTaskRequest):
 
     try:
         agent = _get_or_create_agent(project_id, "threat_modeling")
+        agent_input = dict(req.input_data)
+        agent_input["bug_bounty_system_prompt"] = bb_system_prompt
+        agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
             task_type="threat_modeling",
-            input_data=req.input_data,
+            input_data=agent_input,
         )
         result = await agent.execute_task(task)
         
@@ -1261,10 +1312,13 @@ async def run_dependency_agent(project_id: str, req: AgentTaskRequest):
 
     try:
         agent = _get_or_create_agent(project_id, "dependency")
+        agent_input = dict(req.input_data)
+        agent_input["bug_bounty_system_prompt"] = bb_system_prompt
+        agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
             task_type="dependency",
-            input_data=req.input_data,
+            input_data=agent_input,
         )
         result = await agent.execute_task(task)
         
@@ -1290,10 +1344,13 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
 
     try:
         agent = _get_or_create_agent(project_id, "debate")
+        agent_input = dict(req.input_data)
+        agent_input["bug_bounty_system_prompt"] = bb_system_prompt
+        agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
             task_type="debate",
-            input_data=req.input_data,
+            input_data=agent_input,
         )
         result = await agent.execute_task(task)
         
@@ -2410,86 +2467,6 @@ class URLsInputRequest(BaseModel):
     project_id: str | None = None
 
 
-@app.post("/api/input/urls")
-async def process_urls(req: URLsInputRequest):
-    """Process URLs for web vulnerability analysis."""
-    import httpx
-    from bs4 import BeautifulSoup
-    
-    results = []
-    for url in req.urls[:10]:
-        try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-                response = await client.get(url)
-                
-                soup = BeautifulSoup(response.text, 'html.parser')
-                links = [a.get('href', '') for a in soup.find_all('a', href=True)][:20]
-                forms = []
-                for form in soup.find_all('form'):
-                    form_data = {
-                        "action": form.get('action', ''),
-                        "method": form.get('method', 'get').upper(),
-                        "inputs": [{"name": inp.get('name', ''), "type": inp.get('type', 'text'), "id": inp.get('id', '')} 
-                                   for inp in form.find_all('input')[:10]]
-                    }
-                    forms.append(form_data)
-                
-                results.append({
-                    "url": url,
-                    "status": response.status_code,
-                    "content_type": response.headers.get("content-type", ""),
-                    "links_found": len(links),
-                    "forms_found": len(forms),
-                    "forms": forms[:5],
-                    "technologies": detect_technologies(response.headers, response.text),
-                })
-        except Exception as e:
-            results.append({"url": url, "error": str(e)})
-    
-    return {
-        "status": "ok",
-        "results": results,
-        "count": len(results),
-    }
-
-
-def detect_technologies(headers: dict, html: str) -> dict:
-    """Simple technology detection from headers and HTML."""
-    tech = {}
-    server = headers.get("server", "").lower()
-    if "nginx" in server:
-        tech["web_server"] = "nginx"
-    elif "apache" in server:
-        tech["web_server"] = "apache"
-    elif "iis" in server:
-        tech["web_server"] = "IIS"
-    
-    if "x-powered-by" in headers:
-        tech["backend"] = headers["x-powered-by"]
-    
-    if "wordpress" in html.lower():
-        tech["cms"] = "WordPress"
-    elif "drupal" in html.lower():
-        tech["cms"] = "Drupal"
-    elif "joomla" in html.lower():
-        tech["cms"] = "Joomla"
-    
-    if "react" in html.lower() or "create-react-app" in html.lower():
-        tech["frontend"] = "React"
-    elif "vue" in html.lower() or "vue.js" in html.lower():
-        tech["frontend"] = "Vue.js"
-    elif "angular" in html.lower():
-        tech["frontend"] = "Angular"
-    
-    return tech
-
-
-class FolderScanRequest(BaseModel):
-    folder_path: str
-    project_id: str | None = None
-    file_types: list[str] | None = None
-
-
 @app.post("/api/input/folder")
 async def scan_folder(req: FolderScanRequest):
     """Scan a folder for source code files."""
@@ -3027,6 +3004,282 @@ async def run_tool(req: ToolRunRequest):
 from .v3_endpoints import register_v3_endpoints
 v3_managers = register_v3_endpoints(app, settings, memory_engine)
 
+# ============ BUG BOUNTY MULTI-AGENT FRAMEWORK v7.0 ============
+
+class BugBountyPipelineRequest(BaseModel):
+    target_url: str = ""
+    target_domain: str = ""
+    in_scope: list[str] | None = None
+    out_of_scope: list[str] | None = None
+    program_url: str | None = None  # HackerOne/BugCrowd URL for Agent 1
+
+
+@app.get("/api/bug-bounty/system-prompt")
+async def get_bug_bounty_system_prompt():
+    """Get the full bug bounty system prompt (Foundational Principles + Decision Hierarchy + Agent Architecture).
+    This is the complete operational framework for professional ethical security research.
+    """
+    return {
+        "system_prompt": get_full_system_prompt(),
+        "principles": FOUNDATIONAL_PRINCIPLES,
+        "hierarchy": DECISION_HIERARCHY,
+        "architecture": AGENT_ARCHITECTURE,
+        "agent_count": 10,
+        "version": "7.0",
+    }
+
+
+@app.get("/api/bug-bounty/agents")
+async def list_bug_bounty_agents():
+    """List all 10 bug bounty agents with their descriptions."""
+    return {
+        "agents": [
+            {"id": 1, "name": "URL Parser Agent", "description": "Parses HackerOne/BugCrowd URLs, extracts program metadata, scope, policy"},
+            {"id": 2, "name": "Policy Enforcement Agent", "description": "Gatekeeper - reads program policy, creates vulnerability filtering rules"},
+            {"id": 3, "name": "Scope Guardian Agent", "description": "Verifies every action stays within authorized scope boundaries"},
+            {"id": 4, "name": "Passive Intelligence Agent", "description": "Non-intrusive reconnaissance using OSINT and third-party data"},
+            {"id": 5, "name": "Active Enumeration Agent", "description": "Direct interaction with targets to map attack surface"},
+            {"id": 6, "name": "Vulnerability Scanner Agent", "description": "Tests for security flaws using OWASP Top 10 methodology"},
+            {"id": 7, "name": "Validation Engine Agent", "description": "Multi-stage validation to eliminate false positives"},
+            {"id": 8, "name": "Exploitation Agent", "description": "Creates safe proof-of-concepts with reproducible evidence"},
+            {"id": 9, "name": "Analysis Agent", "description": "CVSS scoring, severity assessment, OWASP/CWE mapping"},
+            {"id": 10, "name": "Report Generation Agent", "description": "Professional vulnerability reports in Blank.md format"},
+        ],
+        "total_agents": 10,
+    }
+
+
+@app.get("/api/bug-bounty/ethical-rules")
+async def get_ethical_rules():
+    """Get the foundational ethical rules that govern all bug bounty operations."""
+    return {
+        "rules": [
+            {"level": 1, "category": "Legal/Ethical", "rules": [
+                "NEVER test unauthorized targets",
+                "NEVER cause service disruption or data loss",
+                "NEVER exfiltrate user data",
+                "ALWAYS operate read-only",
+                "ALWAYS maintain confidentiality",
+            ]},
+            {"level": 2, "category": "Vulnerability QA", "rules": [
+                "ONLY report REAL vulnerabilities with confirmed exploitation potential",
+                "ELIMINATE false positives before reporting",
+                "VALIDATE every finding against program policy",
+                "CONFIRM reproducibility",
+            ]},
+            {"level": 3, "category": "Scope Enforcement", "rules": [
+                "Scope is law - if not in-scope, it's out-of-scope",
+                "Every subdomain cross-checked against scope list",
+                "When uncertain: default to blocking",
+            ]},
+        ],
+        "principle": "Lower levels NEVER override higher levels",
+    }
+
+
+@app.post("/api/bug-bounty/pipeline")
+async def run_bug_bounty_pipeline(req: BugBountyPipelineRequest):
+    """Run the complete 10-agent bug bounty pipeline.
+
+    Uses the Foundational Principles, Decision Hierarchy, and Agent Architecture
+    to orchestrate a professional ethical security research workflow.
+
+    Agents run: URL Parser -> Policy Enforcer -> Scope Guardian -> Passive Intel
+    -> Active Enum -> Vuln Scanner -> Validation Engine -> Exploitation -> Analysis -> Report
+    """
+    # Create a fresh orchestrator per request for thread safety
+    orch = BugBountyOrchestrator(webhook_manager=bb_webhook_manager)
+
+    try:
+        result = await orch.run_pipeline(
+            target_url=req.target_url,
+            target_domain=req.target_domain,
+            in_scope=req.in_scope or [],
+            out_of_scope=req.out_of_scope or [],
+        )
+
+        summary = orch.get_summary(result)
+
+        # Include policy decisions from the 12-phase Policy Decision Engine
+        policy_decisions = getattr(result, "policy_decisions", [])
+        policy_summary = summary.get("policy_decisions", {})
+
+        return {
+            "status": "completed",
+            "pipeline_id": result.pipeline_id,
+            "summary": summary,
+            "program": result.program_intel.program_name if result.program_intel else None,
+            "findings_count": len(result.validation_results),
+            "reports_count": len(result.reports),
+            "ethical_rules_applied": result.ethical_rules_applied,
+            "policy_decisions": policy_decisions,
+            "policy_decisions_summary": policy_summary,
+            "scope_authorizations": getattr(result, "scope_authorizations", []),
+            "scope_authorizations_summary": summary.get("scope_authorizations", {}),
+            "osint_intelligence": summary.get("osint_intelligence", {}),
+            "downstream_guidance": getattr(result, "downstream_guidance", {}),
+            "errors": result.errors[:5] if result.errors else [],
+        }
+    except Exception as e:
+        logger.error("bug_bounty_pipeline_error", error=str(e))
+        return {"status": "error", "error": str(e)}
+
+
+
+# ============ BUG BOUNTY WEBHOOK ENDPOINTS ============
+
+class WebhookConfigRequest(BaseModel):
+    url: str = ""
+    enabled: bool = True
+    events: list[str] | None = None
+    secret: str = ""
+    headers: dict[str, str] | None = None
+    max_retries: int = 3
+    timeout_seconds: int = 10
+    rate_limit_max_per_minute: int = 60
+    rate_limit_max_per_hour: int = 1000
+
+
+# Global webhook manager instance (shared across requests)
+from .bug_bounty import WebhookManager, WebhookConfig
+
+bb_webhook_manager = WebhookManager()
+
+
+@app.get("/api/bug-bounty/webhook/config")
+async def get_webhook_config():
+    """Get the current webhook configuration."""
+    config = bb_webhook_manager.get_config()
+    return {
+        "url": config.url,
+        "enabled": config.enabled,
+        "events": config.events,
+        "has_secret": bool(config.secret),
+        "max_retries": config.max_retries,
+        "timeout_seconds": config.timeout_seconds,
+        "rate_limit_max_per_minute": config.rate_limit_max_per_minute,
+        "rate_limit_max_per_hour": config.rate_limit_max_per_hour,
+    }
+
+
+@app.post("/api/bug-bounty/webhook/config")
+async def save_webhook_config(req: WebhookConfigRequest):
+    """Save webhook configuration."""
+    config = WebhookConfig(
+        url=req.url,
+        enabled=req.enabled,
+        events=req.events or ["policy_decision_made", "pipeline_completed"],
+        secret=req.secret,
+        headers=req.headers or {},
+        max_retries=req.max_retries,
+        timeout_seconds=req.timeout_seconds,
+        rate_limit_max_per_minute=req.rate_limit_max_per_minute,
+        rate_limit_max_per_hour=req.rate_limit_max_per_hour,
+    )
+    bb_webhook_manager.update_config(config)
+    return {"status": "ok", "message": "Webhook configuration saved"}
+
+
+@app.post("/api/bug-bounty/webhook/test")
+async def test_webhook():
+    """Send a test webhook to verify configuration."""
+    delivery = await bb_webhook_manager.test_webhook()
+    if delivery:
+        return {
+            "status": "ok" if delivery.success else "error",
+            "delivery_id": delivery.id,
+            "success": delivery.success,
+            "status_code": delivery.status_code,
+            "error": delivery.error,
+            "timestamp": delivery.timestamp,
+        }
+    return {"status": "error", "error": "Webhook not configured or disabled"}
+
+
+@app.get("/api/bug-bounty/webhook/log")
+async def get_webhook_log(limit: int = 20):
+    """Get recent webhook delivery log."""
+    log = bb_webhook_manager.get_delivery_log(limit=limit)
+    return {"deliveries": log, "count": len(log)}
+
+
+class BugBountyURLParseRequest(BaseModel):
+    url: str = ""
+
+
+class BugBountyPolicyCheckRequest(BaseModel):
+    findings: list[dict]
+
+
+class BugBountyScopeCheckRequest(BaseModel):
+    targets: list[str]
+    in_scope: list[str] | None = None
+    out_of_scope: list[str] | None = None
+
+
+@app.post("/api/bug-bounty/url-parse")
+async def run_url_parser(req: BugBountyURLParseRequest):
+    """Run Agent 1: URL Parser. Parses a HackerOne/BugCrowd program URL."""
+    agent = URLParserAgent()
+    try:
+        result = await agent.parse(req.url)
+        return {
+            "status": "completed",
+            "program_name": result.program_name,
+            "platform": result.platform,
+            "extraction_status": result.extraction_status,
+            "extraction_confidence": result.extraction_confidence,
+            "program_status": result.program_status,
+            "in_scope_domains": result.in_scope_domains[:10],
+            "out_of_scope_domains": result.out_of_scope_domains[:5],
+            "errors": result.errors,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+    finally:
+        await agent.close()
+
+
+@app.post("/api/bug-bounty/policy-check")
+async def run_policy_check(req: BugBountyPolicyCheckRequest):
+    """Run Agent 2: Policy Enforcer. Checks findings against program policy."""
+    agent = PolicyEnforcerAgent()
+    try:
+        results = agent.batch_check(req.findings)
+        allowed = [r for r in results if r.policy_allowed]
+        blocked = [r for r in results if not r.policy_allowed]
+        return {
+            "status": "completed",
+            "total_checked": len(results),
+            "allowed": len(allowed),
+            "blocked": len(blocked),
+            "results": [{"title": r.finding_title, "type": r.finding_type, "allowed": r.policy_allowed, "reason": r.reason} for r in results],
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/bug-bounty/scope-check")
+async def run_scope_check(req: BugBountyScopeCheckRequest):
+    """Run Agent 3: Scope Guardian. Checks targets against scope boundaries."""
+    agent = ScopeGuardianAgent()
+    try:
+        agent.set_scope(req.in_scope or [], req.out_of_scope or [])
+        results = agent.batch_check(req.targets)
+        in_scope_targets = [t for t, r in zip(req.targets, results) if r.in_scope]
+        blocked_targets = [t for t, r in zip(req.targets, results) if not r.in_scope]
+        return {
+            "status": "completed",
+            "total_checked": len(results),
+            "in_scope": len(in_scope_targets),
+            "blocked": len(blocked_targets),
+            "results": [{"target": r.target, "in_scope": r.in_scope, "reason": r.reason} for r in results],
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+
 # ============ AI REPORT GENERATION ============
 
 class AIReportRequest(BaseModel):
@@ -3117,6 +3370,34 @@ async def full_project_scan(project_id: str, req: FullScanRequest):
         raise HTTPException(status_code=503, detail="LLM router not initialized. Configure a provider in Settings first.")
 
     memory_engine.add_investigation_log({"action": "full_scan_started", "target_url": req.target_url or ""})
+
+    # Seed bug bounty knowledge into the pipeline context so agents
+    # operate with the Foundational Principles, Decision Hierarchy,
+    # and Agent Architecture from the Bug Bounty v7.0 specification.
+    from .bug_bounty import get_full_system_prompt, FOUNDATIONAL_PRINCIPLES, DECISION_HIERARCHY
+    pipeline_context = {
+        "bug_bounty_system_prompt": get_full_system_prompt(),
+        "ethical_rules": [
+            "NEVER test unauthorized targets",
+            "NEVER cause service disruption or data loss",
+            "ALWAYS operate read-only",
+            "ALWAYS validate findings before reporting",
+            "Scope is law - if not in-scope, it is out-of-scope",
+            "Quality over quantity - validate every finding",
+        ],
+        "decision_hierarchy": (
+            "Level 1: Legal/Ethical Boundaries (NEVER violated)\n"
+            "Level 2: Program Policy & Scope Enforcement (ALWAYS applied)\n"
+            "Level 3: Vulnerability Validation Requirements (STRICTLY enforced)\n"
+            "Level 4: Report Quality & Professionalism (MAINTAINED)\n"
+            "Level 5: Efficiency & Optimization (ADJUSTED)"
+        ),
+    }
+    memory_engine.add_investigation_log({
+        "action": "bug_bounty_knowledge_seeded",
+        "context_keys": list(pipeline_context.keys()),
+    })
+    memory_engine.save_project(project)
 
     pipeline = [
         ("recon", {"action": "discover", "input_data": {"scope": {"domains": [getattr(project, "folder", "")] or ["example.com"]}, "target_url": req.target_url}}),

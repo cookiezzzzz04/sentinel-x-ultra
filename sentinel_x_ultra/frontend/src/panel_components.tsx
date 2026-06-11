@@ -37,6 +37,10 @@ export function InputSourcesPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls })
       })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Server error (${res.status}): ${text}`)
+      }
       const data = await res.json()
       setResults({ type: 'urls', data })
     } catch (e: any) {
@@ -60,6 +64,10 @@ export function InputSourcesPanel() {
           language: codeFilePath?.split('.').pop() || 'py'
         })
       })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Server error (${res.status}): ${text}`)
+      }
       const data = await res.json()
       setResults({ type: 'code', data })
     } catch (e: any) {
@@ -79,6 +87,10 @@ export function InputSourcesPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_path: folderPath })
       })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Server error (${res.status}): ${text}`)
+      }
       const data = await res.json()
       setResults({ type: 'folder', data })
     } catch (e: any) {
@@ -98,6 +110,10 @@ export function InputSourcesPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: promptInput })
       })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Server error (${res.status}): ${text}`)
+      }
       const data = await res.json()
       setResults({ type: 'prompt', data })
     } catch (e: any) {
@@ -137,6 +153,10 @@ export function InputSourcesPanel() {
           format: 'json'
         })
       })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Server error (${res.status}): ${text}`)
+      }
       const data = await res.json()
       
       if (data.status === 'ok') {
@@ -158,9 +178,47 @@ export function InputSourcesPanel() {
     fileInputRef.current?.click()
   }
 
+  // ============ LOADING OVERLAY ============
+  const LoadingOverlay = () => (
+    <div style={{
+      position: 'absolute',
+      inset: 0,
+      background: 'rgba(10, 10, 15, 0.85)',
+      borderRadius: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '16px',
+      zIndex: 10,
+      backdropFilter: 'blur(4px)',
+      animation: 'fadeIn 0.25s ease'
+    }}>
+      <div style={{
+        width: '48px',
+        height: '48px',
+        border: '3px solid rgba(0, 212, 255, 0.15)',
+        borderTopColor: '#00d4ff',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <div style={{ fontSize: '14px', fontWeight: '600', color: '#00d4ff' }}>
+        {inputMethod === 'webs' ? 'Analyzing URLs...' :
+         inputMethod === 'code' ? 'Analyzing code...' :
+         inputMethod === 'folder' ? 'Scanning folder...' :
+         inputMethod === 'prompts' ? 'Processing prompt...' :
+         'Processing...'}
+      </div>
+      <div style={{ fontSize: '12px', color: '#666' }}>
+        AI-powered security analysis in progress
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-      <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+        {loading && <LoadingOverlay />}
         <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#00d4ff' }}>📥 Input Sources</h3>
         <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Upload code files, scan URLs, analyze folders, or paste code directly for AI-powered security analysis</p>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>

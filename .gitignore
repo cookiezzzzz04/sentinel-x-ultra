@@ -86,6 +86,13 @@ frontend/dist/
 frontend/node_modules/
 frontend/.vite/
 
+# AI assistant / IDE extension state
+.agents/
+.augment/
+.claude/
+.junie/
+.continue/
+
 # API keys and secrets (local overrides)
 api_keys.json
 secrets.json

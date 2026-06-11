@@ -48,6 +48,13 @@ storage/
 *.sqlite
 *.sqlite3
 
+# AI assistant / IDE extension state
+.agents/
+.augment/
+.claude/
+.junie/
+.continue/
+
 # Agent state
 agent_models.json
 agent_models.local.json
