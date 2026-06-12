@@ -26,6 +26,12 @@ from .recon_tools import (
     SENTINELX_TOOLS_DIR,
 )
 
+# Advanced tools
+from .hydra_tool import HydraTool, HydraResult, get_hydra_tool
+from .sqlmap_tool import SQLMapTool, SQLMapResult, get_sqlmap_tool
+from .xxe_tool import XXETool, XXEResult, get_xxe_tool
+from .deserialization_tool import DeserializationTool, DeserializationResult, get_deserialization_tool
+
 
 # ============================================================================
 # Pydantic Models for API
@@ -309,7 +315,347 @@ def _combine_results(results: List[ReconResult]) -> ReconResult:
     )
 
 
+# ============================================================================
+# Pydantic Models for New Tools
+# ============================================================================
+
+class HydraScanRequest(BaseModel):
+    target: str
+    service: str = "ssh"
+    username: Optional[str] = None
+    username_file: Optional[str] = None
+    password_file: Optional[str] = None
+    port: Optional[int] = None
+    threads: int = 4
+    timeout_sec: int = 600
+
+
+class SQLMapScanRequest(BaseModel):
+    target: str
+    data: Optional[str] = None
+    cookie: Optional[str] = None
+    technique: str = "BEUST"
+    level: int = 1
+    risk: int = 1
+    threads: int = 1
+    dbms: Optional[str] = None
+    batch: bool = True
+    timeout_sec: int = 600
+    enumerate_dbs: bool = False
+
+
+class XXEScanRequest(BaseModel):
+    target: str
+    test_type: str = "all"
+    method: str = "POST"
+    content_type: str = "application/xml"
+    timeout_sec: int = 30
+    collaborator_url: Optional[str] = None
+
+
+class DeserializationScanRequest(BaseModel):
+    target: str
+    language: str = "all"
+    command: str = "id"
+    method: str = "POST"
+    timeout_sec: int = 30
+
+
+class ToolInfoRequest(BaseModel):
+    tool: str = "all"
+
+
+# ============================================================================
+# Advanced Tool Endpoints
+# ============================================================================
+
+tool_router = APIRouter(prefix="/api/tools", tags=["tools"])
+
+
+@tool_router.get("/list")
+async def list_all_tools():
+    """List all registered tools with availability status."""
+    from . import get_all_tool_status
+    status = get_all_tool_status()
+    return {
+        "status": "ok",
+        "tools": status,
+        "tools_dir": SENTINELX_TOOLS_DIR,
+    }
+
+
+@tool_router.get("/{tool_name}/status")
+async def get_tool_status(tool_name: str):
+    """Get status of a specific tool."""
+    tool_map = {}
+    from . import TOOL_REGISTRY as _tool_reg
+    import importlib as _il
+    for _name, (_mod, _getter, _cls) in _tool_reg.items():
+        try:
+            _m = _il.import_module(f".{_mod}", __package__)
+            tool_map[_name] = lambda m=_m, g=_getter: getattr(m, g)()
+        except Exception:
+            pass
+    
+    getter = tool_map.get(tool_name.lower())
+    if not getter:
+        return {"status": "error", "error": f"Unknown tool: {tool_name}. Available: {', '.join(tool_map.keys())}"}
+    
+    try:
+        tool = getter()
+        return {
+            "status": "ok",
+            "tool": tool_name,
+            "available": tool.is_available(),
+            "version": tool.get_version() if hasattr(tool, "get_version") else "unknown",
+            "capabilities": tool.get_capabilities() if hasattr(tool, "get_capabilities") else {},
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/hydra/scan")
+async def run_hydra_scan(req: HydraScanRequest):
+    """Run a Hydra brute force scan."""
+    try:
+        tool = get_hydra_tool()
+        if not tool.is_available():
+            return {
+                "status": "error",
+                "error": "Hydra not installed. Install from: https://github.com/vanhauser-thc/thc-hydra",
+                "install_hint": "Place hydra/hydra.exe in ~/.sentinelx/tools/"
+            }
+        
+        result = await tool.scan(
+            target=req.target,
+            service=req.service,
+            username=req.username,
+            username_file=req.username_file,
+            password_file=req.password_file,
+            port=req.port,
+            threads=req.threads,
+            timeout_sec=req.timeout_sec,
+        )
+        
+        return {
+            "status": "completed" if not result.errors else "completed_with_errors",
+            "tool": "hydra",
+            "target": result.target,
+            "service": result.service,
+            "successes": result.successes,
+            "success_count": len(result.successes),
+            "execution_time_seconds": round(result.execution_time_seconds, 2),
+            "errors": result.errors,
+            "tool_version": result.tool_version,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/sqlmap/scan")
+async def run_sqlmap_scan(req: SQLMapScanRequest):
+    """Run a SQLMap SQL injection scan."""
+    try:
+        tool = get_sqlmap_tool()
+        if not tool.is_available():
+            return {
+                "status": "error",
+                "error": "SQLMap not installed. Install from: https://github.com/sqlmapproject/sqlmap",
+                "install_hint": "Clone to ~/.sentinelx/tools/sqlmap/"
+            }
+        
+        if req.enumerate_dbs:
+            result = await tool.enumerate_databases(
+                target=req.target,
+                technique=req.technique,
+                level=req.level,
+                risk=req.risk,
+                batch=req.batch,
+                timeout_sec=req.timeout_sec,
+            )
+        else:
+            result = await tool.scan(
+                target=req.target,
+                data=req.data,
+                cookie=req.cookie,
+                technique=req.technique,
+                level=req.level,
+                risk=req.risk,
+                threads=req.threads,
+                dbms=req.dbms,
+                batch=req.batch,
+                timeout_sec=req.timeout_sec,
+            )
+        
+        return {
+            "status": "completed" if not result.errors else "completed_with_errors",
+            "tool": "sqlmap",
+            "target": result.target,
+            "technique": result.technique,
+            "vulnerable_parameters": result.vulnerable_parameters,
+            "vulnerable": len(result.vulnerable_parameters) > 0,
+            "execution_time_seconds": round(result.execution_time_seconds, 2),
+            "errors": result.errors,
+            "tool_version": result.tool_version,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/xxe/scan")
+async def run_xxe_scan(req: XXEScanRequest):
+    """Run XXE injection test."""
+    try:
+        tool = get_xxe_tool()
+        
+        result = await tool.scan(
+            target=req.target,
+            test_type=req.test_type,
+            method=req.method,
+            content_type=req.content_type,
+            timeout_sec=req.timeout_sec,
+            collaborator_url=req.collaborator_url,
+        )
+        
+        return {
+            "status": "completed",
+            "tool": "xxe_tool",
+            "target": result.target,
+            "vulnerability_detected": result.vulnerability_detected,
+            "findings": result.findings[:20],
+            "findings_count": len(result.findings),
+            "file_read_results": result.file_read_results,
+            "execution_time_seconds": round(result.execution_time_seconds, 2),
+            "errors": result.errors,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.get("/xxe/payloads")
+async def get_xxe_payloads(test_type: str = "all"):
+    """Get XXE payloads for manual testing."""
+    try:
+        tool = get_xxe_tool()
+        payloads = tool.get_payloads(test_type)
+        return {
+            "status": "ok",
+            "test_type": test_type,
+            "payloads": payloads,
+            "total_count": sum(len(v) for v in payloads.values()),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/deserialization/scan")
+async def run_deserialization_scan(req: DeserializationScanRequest):
+    """Run insecure deserialization test."""
+    try:
+        tool = get_deserialization_tool()
+        
+        result = await tool.scan(
+            target=req.target,
+            language=req.language,
+            command=req.command,
+            method=req.method,
+            timeout_sec=req.timeout_sec,
+        )
+        
+        return {
+            "status": "completed",
+            "tool": "deserialization_tool",
+            "target": result.target,
+            "language": result.language,
+            "vulnerability_detected": result.vulnerability_detected,
+            "findings": result.findings[:20],
+            "findings_count": len(result.findings),
+            "payloads_generated": result.payloads_generated,
+            "execution_time_seconds": round(result.execution_time_seconds, 2),
+            "errors": result.errors,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.get("/deserialization/payloads")
+async def generate_deserialization_payloads(language: str = "all", command: str = "id"):
+    """Generate deserialization payloads for manual testing."""
+    try:
+        tool = get_deserialization_tool()
+        payloads = tool.generate_payloads(language, command)
+        total = sum(len(v) for v in payloads.values())
+        return {
+            "status": "ok",
+            "language": language,
+            "command": command,
+            "payloads": payloads,
+            "total_count": total,
+            "supported_languages": tool.supported_languages,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.get("/configuration")
+async def get_tool_configuration():
+    """Get tool configuration from tools.yaml."""
+    import os as _os
+    from pathlib import Path as _Path
+    
+    config_paths = [
+        _Path(__file__).parent / "config" / "tools.yaml",
+        _Path(_os.path.expanduser("~/.sentinelx/tools.yaml")),
+    ]
+    
+    for path in config_paths:
+        if path.exists():
+            try:
+                import yaml
+                with open(path) as f:
+                    config = yaml.safe_load(f)
+                return {"status": "ok", "config": config, "source": str(path)}
+            except Exception:
+                pass
+    
+    return {
+        "status": "ok",
+        "note": "No tools.yaml found. Using default paths from ~/.sentinelx/tools/",
+        "tools_dir": SENTINELX_TOOLS_DIR,
+    }
+
+
+@tool_router.get("/install-guide")
+async def get_tool_install_guide():
+    """Get installation guide for all tools."""
+    return {
+        "status": "ok",
+        "tools_dir": SENTINELX_TOOLS_DIR,
+        "tools": {
+            "hydra": {
+                "url": "https://github.com/vanhauser-thc/thc-hydra",
+                "install": "git clone --depth 1 https://github.com/vanhauser-thc/thc-hydra ~/.sentinelx/tools/hydra",
+                "binary_sources": ["apt install hydra", "brew install hydra", "https://github.com/vanhauser-thc/thc-hydra/releases"],
+            },
+            "sqlmap": {
+                "url": "https://github.com/sqlmapproject/sqlmap",
+                "install": "git clone --depth 1 https://github.com/sqlmapproject/sqlmap ~/.sentinelx/tools/sqlmap",
+                "run": "python ~/.sentinelx/tools/sqlmap/sqlmap.py",
+            },
+            "xxe_tool": {
+                "note": "Built-in payload generator. No installation required.",
+                "test": "Use POST endpoint /api/tools/xxe/scan with target URL",
+            },
+            "deserialization_tool": {
+                "note": "Built-in payload generator. No installation required.",
+                "test": "Use POST endpoint /api/tools/deserialization/scan with target URL",
+            },
+        }
+    }
+
+
 def register_recon_endpoints(app):
-    """Register reconnaissance endpoints with the FastAPI app."""
+    """Register reconnaissance and tool endpoints with the FastAPI app."""
     app.include_router(recon_router)
-    return recon_router
+    app.include_router(tool_router)
+    return recon_router, tool_router

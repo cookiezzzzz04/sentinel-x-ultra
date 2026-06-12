@@ -87,25 +87,7 @@ from .agents.phase5 import (
 from .recon_api import register_recon_endpoints
 
 # Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
-from .bug_bounty import (
-    BugBountyOrchestrator,
-    URLParserAgent,
-    PolicyEnforcerAgent,
-    ScopeGuardianAgent,
-    PassiveIntelligenceAgent,
-    ActiveEnumerationAgent,
-    VulnerabilityScannerAgent,
-    ValidationEngineAgent,
-    ExploitationAgent,
-    AnalysisAgent,
-    ReportGenerationAgent,
-    get_full_system_prompt,
-    FOUNDATIONAL_PRINCIPLES,
-    DECISION_HIERARCHY,
-    AGENT_ARCHITECTURE,
-)
-
-# Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
+import time
 from .bug_bounty import (
     BugBountyOrchestrator,
     URLParserAgent,
@@ -133,6 +115,197 @@ structlog.configure(
 )
 logger = structlog.get_logger()
 
+
+
+
+# ============ ACTIVITY BUS & EVENT STORE ============
+# Central event manager + persistent event storage for the Execution Monitor.
+# Every action generates an event. Every event is visible. Every event is traceable.
+
+class EventStore:
+    """Persistent event storage for execution history.
+    Stores events in memory (for the active session).
+    Maximum 10,000 events retained.
+    """
+    
+    def __init__(self, max_events: int = 10000):
+        self._events: list[dict] = []
+        self._max_events = max_events
+    
+    def append(self, event: dict):
+        """Add an event to the store."""
+        self._events.append(event)
+        if len(self._events) > self._max_events:
+            self._events = self._events[-self._max_events:]
+    
+    def get_events(self, limit: int = 200, offset: int = 0,
+                   event_type: str | None = None,
+                   status: str | None = None,
+                   severity: str | None = None,
+                   source: str | None = None,
+                   search: str | None = None) -> tuple[list[dict], int]:
+        """Get events with optional filtering. Returns (events, total_count)."""
+        filtered = self._events
+        if event_type:
+            filtered = [e for e in filtered if e.get("type") == event_type]
+        if status:
+            filtered = [e for e in filtered if e.get("status") == status]
+        if severity:
+            filtered = [e for e in filtered if e.get("severity") == severity]
+        if source:
+            filtered = [e for e in filtered if e.get("source", e.get("type", "")) == source]
+        if search:
+            search_lower = search.lower()
+            filtered = [e for e in filtered if search_lower in e.get("message", "").lower()
+                        or search_lower in str(e.get("details", "")).lower()]
+        return filtered[offset:offset+limit], len(filtered)
+    
+    def clear(self):
+        self._events = []
+    
+    def get_status_summary(self) -> dict:
+        """Get a summary of current system status from recent events."""
+        recent = self._events[-500:] if len(self._events) > 500 else self._events
+        running = [e for e in recent if e.get("status") in ("running", "processing", "starting")]
+        completed = [e for e in recent if e.get("status") == "completed"]
+        failed = [e for e in recent if e.get("status") == "failed"]
+        return {
+            "total_events": len(self._events),
+            "active_count": len(running),
+            "completed_count": len(completed),
+            "failed_count": len(failed),
+            "active": running[-20:] if running else [],
+            "latest_completed": completed[-5:] if completed else [],
+            "latest_failed": failed[-5:] if failed else [],
+        }
+    
+    def get_system_status(self) -> dict:
+        """Get detailed system health."""
+        recent = self._events[-200:] if len(self._events) > 200 else self._events
+        running = [e for e in recent if e.get("status") in ("running", "processing", "starting")]
+        event_types = {}
+        for e in recent:
+            et = e.get("type", "unknown")
+            event_types[et] = event_types.get(et, 0) + 1
+        sources = {}
+        for e in recent:
+            s = e.get("source", e.get("toolName", e.get("type", "unknown")))
+            sources[s] = sources.get(s, 0) + 1
+        return {
+            "active_tasks": len(running),
+            "active_descriptions": [e.get("message", "") for e in running[:10]],
+            "event_type_breakdown": event_types,
+            "source_breakdown": sources,
+            "recent_errors": [e for e in recent if e.get("status") == "failed"][-5:],
+        }
+
+
+async def emit_rich_event(
+    event_type: str, message: str, status: str = "running",
+    project_id: str | None = None, details: str | None = None,
+    icon: str | None = None, tool_name: str | None = None,
+    progress: dict | None = None,
+    severity: str | None = None,
+    source: str | None = None,
+    category: str | None = None,
+    duration_ms: float | None = None,
+    metadata: dict | None = None,
+):
+    """Emit a rich activity event with full observability fields."""
+    import time as _time
+    event = {
+        "id": str(uuid.uuid4())[:8],
+        "timestamp": _time.strftime("%H:%M:%S"),
+        "type": event_type,
+        "message": message,
+        "status": status,
+        "severity": severity or ("error" if status == "failed" else "info"),
+        "source": source or tool_name or event_type,
+        "category": category or event_type,
+    }
+    if details:
+        event["details"] = details
+    if icon:
+        event["icon"] = icon
+    if tool_name:
+        event["toolName"] = tool_name
+    if progress:
+        event["progress"] = progress
+    if duration_ms is not None:
+        event["duration_ms"] = duration_ms
+    if metadata:
+        event["metadata"] = metadata
+    
+    # Store for history
+    event_store.append(event)
+    # Broadcast via WebSocket
+    await activity_bus.broadcast(event, project_id)
+
+
+class ActivityBus:
+    """Manages WebSocket connections and broadcasts activity events."""
+    
+    def __init__(self):
+        self._connections: dict[str, set[WebSocket]] = {}
+        self._global_connections: set[WebSocket] = set()
+    
+    def register(self, ws: WebSocket, project_id: str | None = None):
+        if project_id:
+            if project_id not in self._connections:
+                self._connections[project_id] = set()
+            self._connections[project_id].add(ws)
+        else:
+            self._global_connections.add(ws)
+    
+    def unregister(self, ws: WebSocket, project_id: str | None = None):
+        if project_id and project_id in self._connections:
+            self._connections[project_id].discard(ws)
+            if not self._connections[project_id]:
+                del self._connections[project_id]
+        else:
+            self._global_connections.discard(ws)
+    
+    async def broadcast(self, event: dict, project_id: str | None = None):
+        if "type" not in event:
+            event["type"] = "system"
+        if "timestamp" not in event:
+            import time as _time
+            event["timestamp"] = _time.strftime("%H:%M:%S")
+        if "status" not in event:
+            event["status"] = "running"
+        if "message" not in event:
+            event["message"] = ""
+        if "id" not in event:
+            event["id"] = str(uuid.uuid4())[:8]
+        
+        targets: set[WebSocket] = set(self._global_connections)
+        if project_id and project_id in self._connections:
+            targets.update(self._connections[project_id])
+        
+        disconnected = set()
+        for ws in targets:
+            try:
+                await ws.send_json(event)
+            except Exception:
+                disconnected.add(ws)
+        for ws in disconnected:
+            self.unregister(ws, project_id)
+    
+    async def emit(self, event_type: str, message: str, status: str = "running",
+                   project_id: str | None = None, details: str | None = None,
+                   icon: str | None = None, tool_name: str | None = None,
+                   progress: dict | None = None):
+        """Legacy emit - delegates to emit_rich_event for compatibility."""
+        await emit_rich_event(
+            event_type=event_type, message=message, status=status,
+            project_id=project_id, details=details, icon=icon,
+            tool_name=tool_name, progress=progress,
+        )
+
+
+# Initialize global activity bus and event store
+activity_bus = ActivityBus()
+event_store = EventStore()
 
 # Global instances
 settings = load_settings()
@@ -456,6 +629,7 @@ class CreateProjectRequest(BaseModel):
     scope: ScopeGraph | None = None
     folder: str | None = None       # Folder-first project creation (optional for backward compat)
     target: str | None = None       # Target domain for seeding the recon txt templates
+    project_type: str | None = None  # 'bug-bounty' or 'full-assessment' for dynamic tab visibility
 
 
 class SendMessageRequest(BaseModel):
@@ -614,9 +788,15 @@ async def create_project(req: CreateProjectRequest):
             logger.error("folder_seed_failed", error=str(exc), folder=req.folder)
             folder_status = f"error: {exc}"
 
+    # Persist project_type on the project object
+    if req.project_type:
+        project.project_type = req.project_type
+        memory_engine.save_project(project)
+
     return {
         "project_id": project.project_id,
         "name": project.name,
+        "project_type": req.project_type or getattr(project, 'project_type', 'bug-bounty'),
         "folder": req.folder,
         "folder_status": folder_status,
         "seeded_files": seeded_files,
@@ -636,7 +816,9 @@ async def get_project(project_id: str):
     project = memory_engine.load_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project.to_dict()
+    result = project.to_dict()
+    result["project_type"] = getattr(project, 'project_type', 'bug-bounty')
+    return result
 
 
 @app.delete("/api/projects/{project_id}")
@@ -846,6 +1028,7 @@ async def start_analysis(project_id: str, input_type: str, input_data: dict):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    await emit_rich_event("analysis", "Starting security analysis...", "running", project_id=project_id, icon="📊", severity="info", source="analysis_engine", category="analysis")
     memory_engine.set_current_project(project)
 
     # Log the analysis start
@@ -893,8 +1076,8 @@ async def analyze_code(project_id: str, req: CodeAnalysisRequest):
         "auth_flows": [a.to_dict() for a in auth_flows],
         "summary": {
             "patterns_found": len(patterns),
-            "critical": len([p for p in patterns if p.severity.value == "critical"]),
-            "high": len([p for p in patterns if p.severity.value == "high"]),
+            "critical": len([p for p in patterns if p.severity.value == "CRITICAL"]),
+            "high": len([p for p in patterns if p.severity.value == "HIGH"]),
             "data_flows": len(data_flows),
             "unsafe_flows": len([f for f in data_flows if not f.is_safe]),
         },
@@ -1126,7 +1309,9 @@ async def get_analysis_summary(project_id: str):
         analyzer = code_analyzers[project_id]
         patterns = analyzer.get_all_patterns()
         summary["code_analysis"]["patterns_found"] = len(patterns)
-        summary["code_analysis"]["critical_issues"] = len([p for p in patterns if p.severity.value == "critical"])
+        summary["code_analysis"]["critical_issues"] = len([p for p in patterns if p.severity.value == "CRITICAL"])
+        summary["code_analysis"]["high_issues"] = len([p for p in patterns if p.severity.value == "HIGH"])
+        summary["code_analysis"]["medium_issues"] = len([p for p in patterns if p.severity.value == "MEDIUM"])
         unsafe_flows = [f for f in analyzer.get_all_data_flows() if not f.is_safe]
         summary["code_analysis"]["data_flows_unsafe"] = len(unsafe_flows)
 
@@ -1151,7 +1336,44 @@ async def get_analysis_summary(project_id: str):
         summary["business_rules"]["rules"] = len(bre.get_all_rules())
         summary["business_rules"]["violations"] = len(bre._violations)
 
+    # Include project findings count (from agent findings, bug bounty pipeline, etc.)
+    if project:
+        findings = getattr(project, "findings", [])
+        summary["project_findings"] = {
+            "total": len(findings),
+            "critical": len([f for f in findings if isinstance(f, dict) and str(f.get("severity", "")).upper() == "CRITICAL"]),
+            "high": len([f for f in findings if isinstance(f, dict) and str(f.get("severity", "")).upper() == "HIGH"]),
+            "medium": len([f for f in findings if isinstance(f, dict) and str(f.get("severity", "")).upper() == "MEDIUM"]),
+            "low": len([f for f in findings if isinstance(f, dict) and str(f.get("severity", "")).upper() == "LOW"]),
+        }
+
     return summary
+
+
+@app.get("/api/projects/{project_id}/findings")
+async def get_project_findings(project_id: str):
+    """Get all unique findings for a project."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = list(getattr(project, "findings", []) or [])
+
+    # Deduplicate findings by (title, target) before returning
+    seen = set()
+    unique_findings = []
+    for f in findings:
+        if isinstance(f, dict):
+            sig = (str(f.get("title", "")).lower(), str(f.get("target", "")).lower())
+            if sig not in seen:
+                seen.add(sig)
+                unique_findings.append(f)
+
+    return {
+        "findings": unique_findings,
+        "total": len(unique_findings),
+        "project_id": project_id,
+    }
 
 
 # ============ Phase 3: Agent Endpoints ============
@@ -1214,8 +1436,11 @@ async def run_recon_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Recon agent...", "starting", project_id=project_id, icon="🎯", severity="info", source="recon", category="recon")
     try:
         agent = _get_or_create_agent(project_id, "recon")
+        await emit_rich_event("agent", "Recon agent running", "running", project_id=project_id, icon="🎯", severity="info", source="recon", category="recon")
         agent_input = dict(req.input_data)
         agent_input["bug_bounty_system_prompt"] = bb_system_prompt
         agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
@@ -1226,13 +1451,17 @@ async def run_recon_agent(project_id: str, req: AgentTaskRequest):
         )
         result = await agent.execute_task(task)
         
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Recon completed: {findings_count} findings", "completed", project_id, icon="🎯")
+        
         return {
             "status": "completed",
             "agent": "recon",
             "result": result,
-            "findings_created": len(getattr(agent, 'findings', [])),
+            "findings_created": findings_count,
         }
     except Exception as e:
+        await activity_bus.emit("agent", f"Recon agent failed: {str(e)[:100]}", "failed", project_id, icon="🎯")
         logger.error("recon_agent_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1246,8 +1475,11 @@ async def run_code_review_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Code Review agent...", "starting", project_id=project_id, icon="🔍", severity="info", source="code_review", category="code_review")
     try:
         agent = _get_or_create_agent(project_id, "code_review")
+        await emit_rich_event("agent", "Code Review agent running", "running", project_id=project_id, icon="🔍", severity="info", source="code_review", category="code_review")
         agent_input = dict(req.input_data)
         agent_input["bug_bounty_system_prompt"] = bb_system_prompt
         agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
@@ -1258,13 +1490,18 @@ async def run_code_review_agent(project_id: str, req: AgentTaskRequest):
         )
         result = await agent.execute_task(task)
         
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Code Review completed: {findings_count} findings", "completed", project_id, icon="🔍")
+        
         return {
             "status": "completed",
             "agent": "code_review",
             "result": result,
-            "findings_created": len(getattr(agent, 'findings', [])),
+            "findings_created": findings_count,
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Code Review failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔍", severity="error", source="code_review", category="code_review", duration_ms=_t1)
         logger.error("code_review_agent_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1278,8 +1515,11 @@ async def run_threat_modeling_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Threat Modeling agent...", "starting", project_id=project_id, icon="🛡️", severity="info", source="threat_modeling", category="threat_modeling")
     try:
         agent = _get_or_create_agent(project_id, "threat_modeling")
+        await emit_rich_event("agent", "Threat Modeling agent running", "running", project_id=project_id, icon="🛡️", severity="info", source="threat_modeling", category="threat_modeling")
         agent_input = dict(req.input_data)
         agent_input["bug_bounty_system_prompt"] = bb_system_prompt
         agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
@@ -1290,13 +1530,18 @@ async def run_threat_modeling_agent(project_id: str, req: AgentTaskRequest):
         )
         result = await agent.execute_task(task)
         
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Threat Modeling completed: {findings_count} findings", "completed", project_id, icon="🛡️")
+        
         return {
             "status": "completed",
             "agent": "threat_modeling",
             "result": result,
-            "findings_created": len(getattr(agent, 'findings', [])),
+            "findings_created": findings_count,
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Threat Modeling failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🛡️", severity="error", source="threat_modeling", category="threat_modeling", duration_ms=_t1)
         logger.error("threat_modeling_agent_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1310,8 +1555,11 @@ async def run_dependency_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Dependency agent...", "starting", project_id=project_id, icon="📦", severity="info", source="dependency", category="dependency")
     try:
         agent = _get_or_create_agent(project_id, "dependency")
+        await emit_rich_event("agent", "Dependency agent running", "running", project_id=project_id, icon="📦", severity="info", source="dependency", category="dependency")
         agent_input = dict(req.input_data)
         agent_input["bug_bounty_system_prompt"] = bb_system_prompt
         agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
@@ -1322,13 +1570,17 @@ async def run_dependency_agent(project_id: str, req: AgentTaskRequest):
         )
         result = await agent.execute_task(task)
         
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Dependency scan completed: {findings_count} findings", "completed", project_id, icon="📦")
+        
         return {
             "status": "completed",
             "agent": "dependency",
             "result": result,
-            "findings_created": len(getattr(agent, 'findings', [])),
+            "findings_created": findings_count,
         }
     except Exception as e:
+        await activity_bus.emit("agent", f"Dependency scan failed: {str(e)[:100]}", "failed", project_id, icon="📦")
         logger.error("dependency_agent_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1342,8 +1594,11 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Debate agent...", "starting", project_id=project_id, icon="⚖️", severity="info", source="debate", category="debate")
     try:
         agent = _get_or_create_agent(project_id, "debate")
+        await emit_rich_event("agent", "Debate agent validating findings", "running", project_id=project_id, icon="⚖️", severity="info", source="debate", category="debate")
         agent_input = dict(req.input_data)
         agent_input["bug_bounty_system_prompt"] = bb_system_prompt
         agent_input["bug_bounty_ethical_rules"] = bb_ethical_rules
@@ -1354,12 +1609,17 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
         )
         result = await agent.execute_task(task)
         
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", "Debate completed", "completed", project_id=project_id, icon="⚖️", severity="success", source="debate", category="debate", duration_ms=_t1)
+        
         return {
             "status": "completed",
             "agent": "debate",
             "result": result,
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Debate failed: {str(e)[:100]}", "failed", project_id=project_id, icon="⚖️", severity="error", source="debate", category="debate", duration_ms=_t1)
         logger.error("debate_agent_error", error=str(e), project_id=project_id)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1397,6 +1657,8 @@ async def run_threat_intelligence_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Threat Intelligence agent...", "starting", project_id=project_id, icon="🔍", severity="info", source="threat_intelligence", category="threat_intel")
     try:
         agent = _get_or_create_phase5_agent(project_id, "threat_intelligence")
         task = TaskPayload(
@@ -1405,6 +1667,8 @@ async def run_threat_intelligence_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Threat Intelligence completed: {findings_count} findings", "completed", project_id, icon="🔍")
         
         return {
             "status": "completed",
@@ -1413,6 +1677,8 @@ async def run_threat_intelligence_agent(project_id: str, req: AgentTaskRequest):
             "findings_created": len(getattr(agent, 'findings', [])),
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Threat Intelligence failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔍", severity="error", source="threat_intelligence", category="threat_intel", duration_ms=_t1)
         logger.error("threat_intelligence_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1424,6 +1690,8 @@ async def run_security_operations_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Security Operations agent...", "starting", project_id=project_id, icon="🛡️", severity="info", source="security_operations", category="sec_ops")
     try:
         agent = _get_or_create_phase5_agent(project_id, "security_operations")
         task = TaskPayload(
@@ -1432,6 +1700,8 @@ async def run_security_operations_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", "Security Operations completed", "completed", project_id=project_id, icon="🛡️", severity="success", source="security_operations", category="sec_ops", duration_ms=_t1)
         
         return {
             "status": "completed",
@@ -1439,6 +1709,8 @@ async def run_security_operations_agent(project_id: str, req: AgentTaskRequest):
             "result": result,
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Security Operations failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🛡️", severity="error", source="security_operations", category="sec_ops", duration_ms=_t1)
         logger.error("security_operations_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1450,6 +1722,8 @@ async def run_adaptive_defense_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Adaptive Defense agent...", "starting", project_id=project_id, icon="⚡", severity="info", source="adaptive_defense", category="adaptive_defense")
     try:
         agent = _get_or_create_phase5_agent(project_id, "adaptive_defense")
         task = TaskPayload(
@@ -1458,6 +1732,8 @@ async def run_adaptive_defense_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Adaptive Defense completed: {findings_count} findings", "completed", project_id, icon="⚡")
         
         return {
             "status": "completed",
@@ -1466,6 +1742,8 @@ async def run_adaptive_defense_agent(project_id: str, req: AgentTaskRequest):
             "findings_created": len(getattr(agent, 'findings', [])),
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Adaptive Defense failed: {str(e)[:100]}", "failed", project_id=project_id, icon="⚡", severity="error", source="adaptive_defense", category="adaptive_defense", duration_ms=_t1)
         logger.error("adaptive_defense_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1477,6 +1755,8 @@ async def run_supply_chain_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Supply Chain agent...", "starting", project_id=project_id, icon="📦", severity="info", source="supply_chain", category="supply_chain")
     try:
         agent = _get_or_create_phase5_agent(project_id, "supply_chain")
         task = TaskPayload(
@@ -1485,6 +1765,8 @@ async def run_supply_chain_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Supply Chain completed: {findings_count} findings", "completed", project_id, icon="📦")
         
         return {
             "status": "completed",
@@ -1493,6 +1775,8 @@ async def run_supply_chain_agent(project_id: str, req: AgentTaskRequest):
             "findings_created": len(getattr(agent, 'findings', [])),
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"Supply Chain failed: {str(e)[:100]}", "failed", project_id=project_id, icon="📦", severity="error", source="supply_chain", category="supply_chain", duration_ms=_t1)
         logger.error("supply_chain_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1504,6 +1788,8 @@ async def run_api_security_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting API Security agent...", "starting", project_id=project_id, icon="🔗", severity="info", source="api_security", category="api_security")
     try:
         agent = _get_or_create_phase5_agent(project_id, "api_security")
         task = TaskPayload(
@@ -1512,6 +1798,8 @@ async def run_api_security_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"API Security completed: {findings_count} findings", "completed", project_id, icon="🔗")
         
         return {
             "status": "completed",
@@ -1520,6 +1808,8 @@ async def run_api_security_agent(project_id: str, req: AgentTaskRequest):
             "findings_created": len(getattr(agent, 'findings', [])),
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", f"API Security failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔗", severity="error", source="api_security", category="api_security", duration_ms=_t1)
         logger.error("api_security_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -1535,6 +1825,8 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    _t0 = time.time()
+    await emit_rich_event("agent", "Starting Remediation agent...", "starting", project_id=project_id, icon="🔧", severity="info", source="remediation", category="remediation")
     try:
         # Get or create remediation agent
         if project_id not in phase4_engines:
@@ -1551,6 +1843,8 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
             input_data=req.input_data or {},
         )
         result = await agent.execute_task(task)
+        findings_count = len(getattr(agent, 'findings', []))
+        await activity_bus.emit("agent", f"Remediation completed: {findings_count} findings", "completed", project_id, icon="🔧")
         
         return {
             "status": "completed",
@@ -1559,6 +1853,8 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
             "findings_created": len(getattr(agent, 'findings', [])),
         }
     except Exception as e:
+        _t1 = (time.time() - _t0) * 1000
+        await emit_rich_event("agent", "Remediation failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔧", severity="error", source="remediation", category="remediation", duration_ms=_t1)
         logger.error("remediation_agent_error", error=str(e), project_id=project_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
@@ -2018,6 +2314,7 @@ async def process_urls(req: URLsInputRequest):
     import httpx
     from bs4 import BeautifulSoup
     
+    await emit_rich_event("analysis", f"Analyzing {len(req.urls)} URLs...", "processing", project_id=req.project_id, icon="🌐", severity="info", source="url_analyzer", category="web_analysis")
     results = []
     for url in req.urls[:10]:
         try:
@@ -2099,6 +2396,7 @@ async def scan_folder(req: FolderScanRequest):
     
     supported_extensions = req.file_types or [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php", ".sql", ".cs", ".c", ".cpp", ".h", ".hpp"]
     
+    await emit_rich_event("analysis", f"Scanning folder: {req.folder_path}", "processing", project_id=req.project_id, icon="📁", severity="info", source="folder_scanner", category="file_analysis")
     if not os.path.exists(req.folder_path):
         return {"status": "error", "error": f"Folder not found: {req.folder_path}"}
     
@@ -2155,6 +2453,7 @@ async def process_prompt(req: PromptsInputRequest):
     from .providers import LLMMessage, MessageRole
     
     try:
+        await emit_rich_event("analysis", "Processing security analysis prompt...", "processing", project_id=req.project_id, icon="💭", severity="info", source="prompt_processor", category="llm_analysis")
         system_context = "You are SENTINEL-X, an autonomous security analysis assistant. Provide concise, actionable security guidance."
         
         messages = [
@@ -2198,8 +2497,8 @@ async def analyze_input_code(req: CodeAnalysisRequest):
         "data_flows": [f.to_dict() for f in data_flows],
         "summary": {
             "patterns_found": len(patterns),
-            "critical": len([p for p in patterns if p.severity.value == "critical"]),
-            "high": len([p for p in patterns if p.severity.value == "high"]),
+            "critical": len([p for p in patterns if p.severity.value == "CRITICAL"]),
+            "high": len([p for p in patterns if p.severity.value == "HIGH"]),
             "data_flows": len(data_flows),
             "unsafe_flows": len([f for f in data_flows if not f.is_safe]),
         },
@@ -2462,94 +2761,276 @@ async def burp_formats():
 
 # ============ INPUT HANDLERS ============
 
-class URLsInputRequest(BaseModel):
-    urls: list[str]
-    project_id: str | None = None
+class BurpUploadRequest(BaseModel):
+    burp_data: list | dict | None = None
+    format: str = "json"
 
 
-@app.post("/api/input/folder")
-async def scan_folder(req: FolderScanRequest):
-    """Scan a folder for source code files."""
-    import os
-    
-    supported_extensions = req.file_types or [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php", ".sql", ".cs", ".c", ".cpp", ".h", ".hpp"]
-    
-    if not os.path.exists(req.folder_path):
-        return {"status": "error", "error": f"Folder not found: {req.folder_path}"}
-    
-    if not os.path.isdir(req.folder_path):
-        return {"status": "error", "error": f"Path is not a directory: {req.folder_path}"}
-    
-    files_found = []
-    total_size = 0
-    
-    for root, dirs, files in os.walk(req.folder_path):
-        dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build', '.idea']]
-        
-        for filename in files:
-            ext = os.path.splitext(filename)[1].lower()
-            if ext in supported_extensions:
-                filepath = os.path.join(root, filename)
+
+
+@app.websocket("/api/ws/activity")
+async def activity_websocket(websocket: WebSocket, project_id: str | None = None):
+    """WebSocket endpoint for real-time activity streaming.
+    Broadcasts AI agent actions, tool executions, file reads, and scan progress.
+    """
+    await websocket.accept()
+    activity_bus.register(websocket, project_id)
+    try:
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                # Handle client messages if needed
+                msg = json.loads(data) if isinstance(data, str) and data.startswith("{") else {}
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                # Send keepalive ping
                 try:
-                    size = os.path.getsize(filepath)
-                    total_size += size
-                    rel_path = os.path.relpath(filepath, req.folder_path)
-                    files_found.append({
-                        "path": rel_path,
-                        "full_path": filepath,
-                        "extension": ext,
-                        "size_bytes": size,
-                    })
+                    await websocket.send_json({"type": "ping", "message": "keepalive"})
                 except Exception:
-                    pass
-    
-    files_found.sort(key=lambda x: x["size_bytes"], reverse=True)
-    
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        activity_bus.unregister(websocket, project_id)
+
+
+
+
+# ============ EXECUTION MONITOR ENDPOINTS ============
+# Real-time observability API for the Execution Monitor dashboard.
+# All endpoints are scoped under /api/execution/*.
+
+class ExecutionSearchRequest(BaseModel):
+    limit: int = 200
+    offset: int = 0
+    event_type: str | None = None
+    status: str | None = None
+    severity: str | None = None
+    source: str | None = None
+    search: str | None = None
+
+
+@app.post("/api/execution/events")
+async def get_execution_events(req: ExecutionSearchRequest):
+    """Get execution events with search, filter, and pagination."""
+    events, total = event_store.get_events(
+        limit=req.limit, offset=req.offset,
+        event_type=req.event_type, status=req.status,
+        severity=req.severity, source=req.source,
+        search=req.search,
+    )
     return {
-        "status": "ok",
-        "folder": req.folder_path,
-        "files_found": len(files_found),
-        "total_size_bytes": total_size,
-        "files": files_found[:50],
-        "extensions": {ext: len([f for f in files_found if f["extension"] == ext]) for ext in supported_extensions},
+        "events": events,
+        "total": total,
+        "limit": req.limit,
+        "offset": req.offset,
     }
 
 
-class PromptsInputRequest(BaseModel):
-    prompt: str
+@app.get("/api/execution/events/recent")
+async def get_recent_events(limit: int = 100):
+    """Get the most recent execution events (lightweight for polling)."""
+    events, total = event_store.get_events(limit=limit)
+    return {"events": events, "total": total}
+
+
+@app.get("/api/execution/status")
+async def get_execution_status():
+    """Get current execution system status summary for the dashboard."""
+    return event_store.get_status_summary()
+
+
+@app.get("/api/execution/system-status")
+async def get_execution_system_status():
+    """Get detailed system health status."""
+    return event_store.get_system_status()
+
+
+@app.post("/api/execution/clear")
+async def clear_execution_events():
+    """Clear all execution events from the store."""
+    event_store.clear()
+    return {"status": "ok", "message": "Execution events cleared"}
+
+
+@app.get("/api/execution/export")
+async def export_events(format: str = "json"):
+    """Export all execution events as JSON or CSV."""
+    events, _ = event_store.get_events(limit=10000)
+    if format == "csv":
+        import io, csv
+        output = io.StringIO()
+        if events:
+            writer = csv.DictWriter(output, fieldnames=list(events[0].keys()))
+            writer.writeheader()
+            writer.writerows(events)
+        return Response(content=output.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=execution_events.csv"})
+    return {"events": events, "total": len(events)}
+
+
+# ============ BUG BOUNTY SCAN ENDPOINT ============
+
+# In-memory store for uploaded project files (temporary, used by Bug Bounty scan)
+_uploaded_files_store: dict[str, list[dict[str, str]]] = {}
+
+class UploadFilesRequest(BaseModel):
+    folder_name: str
+    folder_path: str = ''
+    files: list[dict[str, str]]
+
+
+@app.post("/api/projects/upload-files")
+async def upload_project_files(req: UploadFilesRequest):
+    """Upload files from a selected folder for Bug Bounty analysis."""
+    store_key = req.folder_path if req.folder_path else req.folder_name
+    _uploaded_files_store[store_key] = req.files
+    logger.info("project_files_uploaded", folder=req.folder_name, count=len(req.files))
+    return {
+        "status": "ok",
+        "folder": req.folder_name,
+        "files_count": len(req.files),
+    }
+
+
+class BugBountyScanRequest(BaseModel):
+    target_domain: str = ""
+    in_scope: list[str] | None = None
     project_id: str | None = None
-    context: dict | None = None
 
 
-@app.post("/api/input/prompts")
-async def process_prompt(req: PromptsInputRequest):
-    """Process security testing prompts through AI."""
-    if llm_router is None:
-        return {"status": "error", "error": "LLM router not initialized. Please configure a provider in Settings."}
+@app.post("/api/bug-bounty/scan")
+async def run_bug_bounty_scan(req: BugBountyScanRequest):
+    """Run Bug Bounty scan workflow (alias for pipeline with activity tracking).
+    This provides a cleaner 'Scan' button experience in the UI.
+    """
+    from .bug_bounty import BugBountyOrchestrator
     
-    from .providers import LLMMessage, MessageRole
+    effective_url = req.target_domain
+    if not effective_url.startswith("http"):
+        effective_url = f"https://{effective_url}"
     
+    # Create a fresh orchestrator per request
+    orch = BugBountyOrchestrator()
+    
+    _scan_t0 = time.time()
+    await emit_rich_event("scan", f"Starting Bug Bounty scan on: {req.target_domain}", "starting", project_id=req.project_id or "", icon="🚀", severity="info", source="bug_bounty_scanner", category="bug_bounty")
     try:
-        system_context = "You are SENTINEL-X, an autonomous security analysis assistant. Provide concise, actionable security guidance."
+        # If project_id is provided, load files from the project folder
         
-        messages = [
-            LLMMessage(role=MessageRole.SYSTEM, content=system_context),
-            LLMMessage(role=MessageRole.USER, content=req.prompt),
-        ]
+        # Also scan project folder on disk if available
+        if req.project_id:
+            project = memory_engine.load_project(req.project_id)
+            if project and getattr(project, 'folder', None):
+                folder_path = Path(project.folder)
+                if folder_path.exists() and folder_path.is_dir():
+                    await emit_rich_event("scan", f"Scanning project folder: {folder_path}", "running", project_id=req.project_id, icon="📁", severity="info", source="folder_scanner", category="bug_bounty")
+                    supported_ext = {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php", ".sql", ".cs", ".c", ".cpp", ".h", ".hpp", ".yaml", ".yml", ".json", ".xml", ".html", ".css", ".txt", ".md", ".env", ".conf", ".ini"}
+                    for f in folder_path.rglob("*"):
+                        if f.is_file() and f.suffix.lower() in supported_ext:
+                            skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv", "dist", "build", ".idea", ".vscode"}
+                            if not any(part in skip_dirs for part in f.parts):
+                                try:
+                                    folder_files[str(f.relative_to(folder_path))] = f.read_text(encoding="utf-8", errors="ignore")
+                                except Exception:
+                                    pass
+                    await emit_rich_event("scan", f"Loaded {len(folder_files)} files from project folder", "running", project_id=req.project_id, icon="📁", severity="info", source="folder_scanner", category="bug_bounty")
         
-        if req.context:
-            context_str = f"\nContext: {json.dumps(req.context)}"
-            messages[1] = LLMMessage(role=MessageRole.USER, content=req.prompt + context_str)
+        result = await orch.run_pipeline(
+            target_url=effective_url,
+            target_domain=req.target_domain,
+            in_scope=req.in_scope or [req.target_domain],
+            project_id=req.project_id,
+            folder_files=folder_files if folder_files else None,
+        )
         
-        response = await llm_router.complete(messages, max_tokens=2000)
+        # Get unique reports count
+        reports = getattr(result, 'reports', []) or getattr(result, 'findings', [])
+        file_findings = getattr(result, 'file_findings', []) or []
+        total_findings = len(reports) + len(file_findings)
+        _scan_t1 = (time.time() - _scan_t0) * 1000
+        await emit_rich_event("scan", f"Bug Bounty scan completed: {total_findings} total findings", "completed", project_id=req.project_id or "", icon="🚀", severity="success", source="bug_bounty_scanner", category="bug_bounty", duration_ms=_scan_t1)
+        
+        return {
+            "status": "completed",
+            "findings_count": total_findings,
+            "scan_findings": len(reports),
+            "file_findings": len(file_findings),
+            "files_analyzed": len(folder_files),
+            "summary": getattr(result, 'summary', None) or getattr(result, 'findings_summary', None),
+            "message": f"Scan completed: {total_findings} findings ({len(reports)} web + {len(file_findings)} file)",
+        }
+    except Exception as e:
+        _scan_t1 = (time.time() - _scan_t0) * 1000
+        await emit_rich_event("scan", f"Bug Bounty scan failed: {str(e)[:100]}", "failed", project_id=req.project_id or "", icon="🚀", severity="error", source="bug_bounty_scanner", category="bug_bounty", duration_ms=_scan_t1)
+        logger.error("bug_bounty_scan_error", error=str(e), exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+# ============ TOOL RUNNER ENDPOINTS ============
+
+@app.post("/api/tools/{tool_name}/stop")
+async def stop_tool(tool_name: str, req: dict):
+    """Stop a running tool."""
+    return {"status": "ok", "message": f"Stop requested for {tool_name}"}
+
+
+
+
+@app.post("/api/burp/upload")
+async def upload_burp_export(req: BurpUploadRequest):
+    """Upload Burp Suite JSON export for analysis."""
+    try:
+        burp_data = req.burp_data or []
+        if isinstance(burp_data, dict):
+            burp_data = [burp_data]
+        
+        findings = []
+        total_requests = len(burp_data)
+        api_endpoints = 0
+        auth_headers_found = 0
+        error_responses = 0
+        
+        for item in burp_data:
+            url = item.get("url", "") if isinstance(item, dict) else ""
+            method = item.get("method", "GET") if isinstance(item, dict) else ""
+            status = item.get("status", item.get("responseCode", 0)) if isinstance(item, dict) else 0
+            
+            if "/api/" in url.lower() or "/rest/" in url.lower():
+                api_endpoints += 1
+                findings.append({"type": "api_endpoint", "url": url, "method": method})
+            
+            if isinstance(status, int) and status >= 400:
+                error_responses += 1
+                findings.append({"type": "error_response", "url": url, "method": method, "code": status})
+            
+            request_data = item.get("request", {}) if isinstance(item, dict) else {}
+            if isinstance(request_data, dict):
+                headers_str = str(request_data.get("headers", ""))
+                if "authorization" in headers_str.lower() or "bearer" in headers_str.lower():
+                    auth_headers_found += 1
+                    findings.append({"type": "auth_header", "url": url, "method": method})
         
         return {
             "status": "ok",
-            "response": response.content,
-            "latency_ms": response.latency_ms,
+            "summary": {
+                "total_requests": total_requests,
+                "api_endpoints": api_endpoints,
+                "auth_endpoints": auth_headers_found,
+                "error_responses": error_responses,
+                "security_findings": len(findings),
+            },
+            "findings": findings[:50],
+            "format": req.format,
         }
     except Exception as e:
-        logger.error("prompt_processing_error", error=str(e))
+        logger.error("burp_upload_error", error=str(e))
         return {"status": "error", "error": str(e)}
 
 
@@ -2573,8 +3054,8 @@ async def analyze_input_code(req: CodeAnalysisRequest):
         "data_flows": [f.to_dict() for f in data_flows],
         "summary": {
             "patterns_found": len(patterns),
-            "critical": len([p for p in patterns if p.severity.value == "critical"]),
-            "high": len([p for p in patterns if p.severity.value == "high"]),
+            "critical": len([p for p in patterns if p.severity.value == "CRITICAL"]),
+            "high": len([p for p in patterns if p.severity.value == "HIGH"]),
             "data_flows": len(data_flows),
             "unsafe_flows": len([f for f in data_flows if not f.is_safe]),
         },
@@ -2763,6 +3244,7 @@ async def run_gobuster_scan(req: GobusterScanRequest):
     from .gobuster_tool import GobusterTool, GobusterResult, get_gobuster_tool
     import asyncio
     
+    await activity_bus.emit("tool", "Starting Gobuster scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="gobuster")
     scanner = get_gobuster_tool()
     
     if not scanner.is_available():
@@ -2783,6 +3265,7 @@ async def run_gobuster_scan(req: GobusterScanRequest):
             timeout=req.timeout,
             headers=req.headers
         )
+        await activity_bus.emit("tool", "Gobuster scan completed: " + str(len(getattr(result, 'results', []) or [])) + " results", "completed", project_id=None, icon="\U0001f50d", tool_name="gobuster")
         
         return {
             "status": "ok",
@@ -2854,6 +3337,7 @@ async def run_nmap_scan(req: NmapScanRequest):
     """Run an nmap scan."""
     from .nmap_tool import get_nmap_tool
     
+    await activity_bus.emit("tool", "Starting Nmap scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="nmap")
     scanner = get_nmap_tool()
     
     if not scanner.is_available():
@@ -2874,6 +3358,7 @@ async def run_nmap_scan(req: NmapScanRequest):
             os_detection=req.os_detection,
             service_detection=req.service_detection
         )
+        await activity_bus.emit("tool", "Nmap scan completed", "completed", project_id=None, icon="\U0001f50d", tool_name="nmap")
         
         return {
             "status": "ok",
@@ -2928,6 +3413,7 @@ async def run_ffuf_scan(req: FfufScanRequest):
     """Run an ffuf web fuzzing scan."""
     from .ffuf_tool import get_ffuf_tool
     
+    await activity_bus.emit("tool", "Starting FFUF scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="ffuf")
     scanner = get_ffuf_tool()
     
     if not scanner.is_available():
@@ -2949,6 +3435,7 @@ async def run_ffuf_scan(req: FfufScanRequest):
             follow_redirects=req.follow_redirects,
             rate=req.rate
         )
+        await activity_bus.emit("tool", "FFUF scan completed", "completed", project_id=None, icon="\U0001f50d", tool_name="ffuf")
         
         return {
             "status": "ok",
@@ -3012,6 +3499,7 @@ class BugBountyPipelineRequest(BaseModel):
     in_scope: list[str] | None = None
     out_of_scope: list[str] | None = None
     program_url: str | None = None  # HackerOne/BugCrowd URL for Agent 1
+    project_id: str | None = None  # Optional: saves findings to this project
 
 
 @app.get("/api/bug-bounty/system-prompt")
@@ -3087,12 +3575,22 @@ async def run_bug_bounty_pipeline(req: BugBountyPipelineRequest):
     Agents run: URL Parser -> Policy Enforcer -> Scope Guardian -> Passive Intel
     -> Active Enum -> Vuln Scanner -> Validation Engine -> Exploitation -> Analysis -> Report
     """
+    # Auto-route target_domain to URL Parser (Agent 1) if no target_url provided
+    effective_url = req.target_url
+    if not effective_url and req.target_domain:
+        domain = req.target_domain.strip()
+        if not domain.startswith("http"):
+            domain = f"https://{domain}"
+        effective_url = domain
+
     # Create a fresh orchestrator per request for thread safety
     orch = BugBountyOrchestrator(webhook_manager=bb_webhook_manager)
 
+    _pipe_t0 = time.time()
+    await emit_rich_event("scan", "Starting Bug Bounty pipeline...", "running", project_id=req.project_id or req.target_domain, icon="🚀", severity="info", source="bug_bounty_pipeline", category="bug_bounty")
     try:
         result = await orch.run_pipeline(
-            target_url=req.target_url,
+            target_url=effective_url,
             target_domain=req.target_domain,
             in_scope=req.in_scope or [],
             out_of_scope=req.out_of_scope or [],
@@ -3104,13 +3602,101 @@ async def run_bug_bounty_pipeline(req: BugBountyPipelineRequest):
         policy_decisions = getattr(result, "policy_decisions", [])
         policy_summary = summary.get("policy_decisions", {})
 
+        # === DEDUPLICATE FINDINGS ===
+        # Reports are the canonical unique findings (passed all gates)
+        # Deduplicate by (vulnerability_type, target_domain) so each unique
+        # vulnerability class appears only once per target. This prevents the
+        # scanner from flooding output with identical findings for every endpoint.
+        unique_reports = []
+        seen_vuln_types = set()
+        target_domain_key = (req.target_domain or "").lower()
+        for r in result.reports:
+            # Extract vulnerability type from title using keyword matching
+            # (more robust than parsing by position)
+            title_lower = getattr(r, "title", "").lower()
+            vuln_type = "unknown"
+            # Normalize title: replace spaces and hyphens with underscores so
+            # both simulated ("Potential sql_injection identified") and
+            # real-world ("Potential XSS in login") report titles match.
+            title_normalized = title_lower.replace(" ", "_").replace("-", "_")
+            vuln_keywords = ["sql_injection", "sqli", "xss", "cross_site", "idor", "ssrf",
+                            "auth_bypass", "authentication_bypass", "command_injection", "rce", "xxe",
+                            "ssti", "path_traversal", "open_redirect", "csrf", "business_logic",
+                            "information_disclosure", "privilege_escalation", "injection"]
+            for kw in vuln_keywords:
+                if kw in title_normalized:
+                    vuln_type = kw
+                    break
+            if vuln_type == "unknown":
+                # Fallback: use second word if title starts with 'Potential'
+                parts = title_lower.split()
+                vuln_type = parts[1] if len(parts) > 1 and parts[0] == "potential" else title_lower[:50]
+            # Dedup signature: (vuln_type, target_domain)
+            sig = (vuln_type, target_domain_key)
+            if sig not in seen_vuln_types:
+                seen_vuln_types.add(sig)
+                unique_reports.append({
+                    "id": vuln_type.replace(" ", "_"),
+                    "title": getattr(r, "title", "Unknown"),
+                    "description": getattr(r, "issue_description", ""),
+                    "severity": (getattr(r, "risk_rating", "") or "MEDIUM").upper(),
+                    "target": getattr(r, "affected_url", req.target_domain or ""),
+                    "vulnerability_type": vuln_type,
+                    "cvss": getattr(r, "cvss", ""),
+                    "impact": getattr(r, "impact", ""),
+                    "steps_to_reproduce": getattr(r, "steps_to_reproduce", []),
+                    "remediation": getattr(r, "recommended_fix", ""),
+                    "references": getattr(r, "references", []),
+                    "source": "bug_bounty",
+                })
+
+        # Save unique findings to project (deduplicated against existing project findings too)
+        if unique_reports:
+            all_projects = memory_engine.list_projects()
+            project = None
+            target_domain = req.target_domain or ""
+            for p in all_projects:
+                pid = getattr(p, "project_id", "") if hasattr(p, "project_id") else p.get("project_id", "")
+                pname = getattr(p, "name", "") if hasattr(p, "name") else p.get("name", "").lower()
+                if target_domain and target_domain in pname:
+                    project = memory_engine.load_project(pid)
+                    break
+            if project is None and all_projects:
+                last_p = all_projects[-1]
+                last_id = getattr(last_p, "project_id", "") if hasattr(last_p, "project_id") else last_p.get("project_id", "")
+                project = memory_engine.load_project(last_id)
+
+            if project:
+                existing_sigs = set()
+                for f in getattr(project, "findings", []):
+                    ftitle = str(f.get("title", "") if isinstance(f, dict) else "").lower()
+                    ftarget = str(f.get("target", "") if isinstance(f, dict) else "").lower()
+                    existing_sigs.add((ftitle, ftarget))
+
+                new_count = 0
+                for report in unique_reports:
+                    # Dedup against existing project findings using (vuln_type, domain) signature
+                    report_sig = (report.get("vulnerability_type", report["title"]).lower(), req.target_domain.lower() if req.target_domain else "")
+                    # Also check old-format sig (title, target) for backward compatibility
+                    old_sig = (report["title"].lower(), report["target"].lower())
+                    if report_sig not in existing_sigs and old_sig not in existing_sigs:
+                        existing_sigs.add(report_sig)
+                        project.findings.append(report)
+                        new_count += 1
+
+                if new_count > 0:
+                    memory_engine.save_project(project)
+                    logger.info("bug_bounty_findings_saved", new=new_count, total=len(project.findings))
+
         return {
             "status": "completed",
+            "pipeline_type": "bug_bounty",
             "pipeline_id": result.pipeline_id,
             "summary": summary,
             "program": result.program_intel.program_name if result.program_intel else None,
-            "findings_count": len(result.validation_results),
+            "findings_count": len(unique_reports),
             "reports_count": len(result.reports),
+            "unique_findings": unique_reports,
             "ethical_rules_applied": result.ethical_rules_applied,
             "policy_decisions": policy_decisions,
             "policy_decisions_summary": policy_summary,

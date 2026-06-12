@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
 
 import { InputSourcesPanel, ThreatHuntPanel, SupplyChainPanel } from './panel_components'
+import { CreateProjectWizard } from './components/CreateProjectWizard'
+import { ActivityCenter, useActivityStream } from './components/ActivityCenter'
+import type { ActivityEvent } from './components/ActivityCenter'
+import { ProxyMonitor } from './components/ProxyMonitor'
+import { ToolRunnerPanel } from './components/ToolRunnerPanel'
+import { ModelManagementUI } from './components/ModelManagementUI'
+import { Button } from './components/Button'
+import './index.css'
+import { ExecutionMonitor } from './components/ExecutionMonitor'
+import type { PipelineStage } from './components/PipelineTracker'
 
 
 
@@ -13,6 +23,8 @@ interface Project {
   name: string
 
   created_at: string
+
+  project_type?: string
 
   findings_count?: number
 
@@ -42,50 +54,24 @@ interface AgentModelConfig {
 
   [agentId: string]: string
 
-}
-
-
-
-interface Finding {
-
+}interface Finding {
   id: string
-
   type: string
-
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'
   title: string
-
   description: string
-
   location?: string
-
   cwe?: string
-
   owasp?: string[]
-
-}
-
-
-
-interface ThreatAlert {
-
+}interface ThreatAlert {
   id: string
-
   type: string
-
-  severity: 'critical' | 'high' | 'medium' | 'low'
-
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
   title: string
-
   description: string
-
   timestamp: string
-
   iocs?: string[]
-
   yara_matches?: string[]
-
 }
 
 
@@ -114,16 +100,17 @@ interface SBOMEntry {
 
 function App() {
 
-  const [view, setView] = useState<'dashboard' | 'models' | 'settings'>('dashboard')
-
+  const [view, setView] = useState<'dashboard' | 'models' | 'settings' | 'execution'>('dashboard')
   const [projects, setProjects] = useState<Project[]>([])
-
   const [health, setHealth] = useState<HealthStatus | null>(null)
-
   const [loading, setLoading] = useState(true)
   const [isFullScanning, setIsFullScanning] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
+  const [pendingProjectName, setPendingProjectName] = useState('')
+  const [activityOpen, setActivityOpen] = useState(false)
 
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
+  const [currentProjectType, setCurrentProjectType] = useState<string | null>(null)
 
   const [configuredProviders, setConfiguredProviders] = useState<Set<string>>(new Set())
 
@@ -213,18 +200,15 @@ function App() {
 
 
 
-  const createProject = async (name: string, folder?: string, target?: string) => {
+  const createProject = async (name: string, folder?: string, target?: string, projectType?: string) => {
     try {
       const body: any = { name }
       if (folder) body.folder = folder
       if (target) body.target = target
+      if (projectType) body.project_type = projectType
       const res = await fetch('/api/projects', {
-
         method: 'POST',
-
-        headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ name }),
+        headers: { 'Content-Type': 'application/json' },        body: JSON.stringify(body),
 
       })
 
@@ -292,6 +276,8 @@ function App() {
 
 
 
+    const { events: activityEvents } = useActivityStream(currentProject?.project_id)
+
   const addNotification = (type: string, message: string) => {
 
     const id = Date.now().toString()
@@ -305,6 +291,18 @@ function App() {
     }, 4000)
 
   }
+
+  // Fetch project type when opening a project
+  useEffect(() => {
+    if (currentProject) {
+      fetch('/api/projects/' + currentProject.project_id)
+        .then(r => r.json())
+        .then(data => setCurrentProjectType(data.project_type || 'bug-bounty'))
+        .catch(() => setCurrentProjectType('bug-bounty'))
+    } else {
+      setCurrentProjectType(null)
+    }
+  }, [currentProject])
 
 
 
@@ -480,6 +478,13 @@ function App() {
             onClick={() => setView('models')}
           />
           <NavItem 
+            icon="📡" 
+            label="Monitor" 
+            active={view === 'execution'} 
+            collapsed={sidebarCollapsed}
+            onClick={() => setView('execution')}
+          />
+          <NavItem 
             icon="⚙️" 
             label="Settings" 
             active={view === 'settings'} 
@@ -637,7 +642,7 @@ function App() {
 
             </button>
 
-            <button style={{
+            {currentProjectType === 'bug-bounty' && <button style={{
 
               background: 'linear-gradient(135deg, #00d4ff, #00ff88)',
 
@@ -670,7 +675,7 @@ function App() {
               }
             }} disabled={isFullScanning}>
               {isFullScanning ? '\u25cf Scanning...' : '+ Full Scan'}
-            </button>
+            </button>}
 
           </div>
 
@@ -686,36 +691,38 @@ function App() {
 
             <LoadingSpinner />
 
+          ) : showWizard ? (
+
+            <CreateProjectWizard
+              defaultName={pendingProjectName}
+              onComplete={(name, _desc, folder, projectType) => {
+                createProject(name, folder, undefined, projectType)
+                setShowWizard(false)
+                setPendingProjectName('')
+              }}
+              onCancel={() => { setShowWizard(false); setPendingProjectName('') }}
+            />
+
           ) : currentProject ? (
 
             <ProjectView project={currentProject} onBack={() => { setCurrentProject(null); setView('dashboard') }} addNotification={addNotification} />
 
           ) : view === 'settings' ? (
 
-            <SetupView configuredProviders={configuredProviders} onProviderConfigured={(providerId) => {
-
-              setConfiguredProviders(prev => new Set([...prev, providerId]))
-
-              addNotification('success', `${providerId} configured successfully`)
-
-            }} />
+            <ModelManagementUI />
 
           ) : view === 'models' ? (
 
-            <AgentModelsView   />          ) : (
+            <ModelManagementUI />
 
-            <DashboardView 
+          ) : (
 
-              projects={projects} 
-
-              onCreateProject={createProject} 
-
-              onDeleteProject={deleteProject} 
-
+            <DashboardView
+              projects={projects}
+              onCreateProject={(name) => { setPendingProjectName(name); setShowWizard(true) }}
+              onDeleteProject={deleteProject}
               onOpenProject={(p) => setCurrentProject(p)}
-
               health={health}
-
             />
 
           )}
@@ -724,6 +731,12 @@ function App() {
 
       </main>
 
+      {/* Activity Center */}
+      <ActivityCenter
+        events={activityEvents}
+        isOpen={activityOpen}
+        onToggle={() => setActivityOpen(!activityOpen)}
+      />
 
 
       <style>{`
@@ -1578,7 +1591,7 @@ function ProjectView({ project, onBack, addNotification }: {
 
 }) {
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'input' | 'analysis' | 'agents' | 'findings' | 'ai-report' | 'bug-bounty'>('overview')
+  const [activeTab, setActiveTab] = useState<string>('overview')
   const [analysisFocus, setAnalysisFocus] = useState<'general' | 'threat-hunt' | 'supply-chain'>('general')
 
   const [agentOutput, setAgentOutput] = useState<string>('')
@@ -1624,6 +1637,17 @@ function ProjectView({ project, onBack, addNotification }: {
       setRunningAgent(null)    }
   }
 
+  const [projectType, setProjectType] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Fetch project type from the server
+    fetch(`/api/projects/${project.project_id}`).then(r => r.json()).then(data => {
+      setProjectType(data.project_type || 'bug-bounty')
+    }).catch(() => {})
+  }, [project.project_id])
+
+  const isBugBounty = projectType === 'bug-bounty'
+
   const tabs = [
     { id: 'overview',  label: 'Overview',       icon: '📊', bio: 'Project dashboard, recent activity, and quick actions to start a new assessment.' },
     { id: 'input',     label: 'Input Sources',  icon: '📥', bio: 'Feed the system with code, URLs, folders, Burp Suite history, or natural-language prompts.' },
@@ -1631,7 +1655,19 @@ function ProjectView({ project, onBack, addNotification }: {
     { id: 'agents',    label: 'Agents',         icon: '🤖', bio: 'Orchestrate the multi-agent framework: recon, code review, threat modeling, debate, remediation, and Phase 5 advanced agents.' },
     { id: 'findings',  label: 'Findings',       icon: '🎯', bio: 'Browse validated findings, view evidence, attack chains, and export reports in the Blank.md shape.' },
     { id: 'ai-report', label: 'AI Report',       icon: '📝', bio: 'Have the configured model write a Blank.md report from the findings it thinks are worth reporting to the company.' },
-    { id: 'bug-bounty', label: 'Bug Bounty',     icon: '🏴', bio: 'Enterprise Bug Bounty System v7.0 with 10 specialized agents and Foundational Principles for professional ethical security research.' },
+    { id: 'execution-monitor' as const, label: 'Monitor', icon: '📡', bio: 'Real-time Execution Monitor with live event stream, pipeline tracker, system status, and full execution history.' },
+    ...(isBugBounty
+      ? [{ id: 'bug-bounty' as const, label: 'Bug Bounty', icon: '🏴', bio: 'Enterprise Bug Bounty System v7.0 with 10 specialized agents and Foundational Principles for professional ethical security research.' }]
+      : []
+    ),
+    ...(!isBugBounty
+      ? [
+          { id: 'proxy' as const, label: 'Proxy', icon: '🌐', bio: 'Burp-Style Proxy Monitor with live request streaming, inspector, and real-time traffic analysis.' },
+          { id: 'tools' as const, label: 'Tools', icon: '🔧', bio: 'Centralized Tool Runner Service for Gobuster, Nmap, FFUF, and other security tools.' },,
+    { id: 'execution-monitor' as const, label: 'Monitor', icon: '📡', bio: 'Real-time Execution Monitor with live event stream, pipeline tracker, system status, and full execution history.' },
+        ]
+      : []
+    ),
   ]
 
 
@@ -1702,9 +1738,9 @@ function ProjectView({ project, onBack, addNotification }: {
 
       }}>
 
-        {tabs.map(tab => (
+        {tabs.map((tab: any) => (
 
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+          <button key={tab.id} onClick={() => setActiveTab((tab as any).id)}
 
             style={{
 
@@ -1783,14 +1819,26 @@ function ProjectView({ project, onBack, addNotification }: {
       )}
       {activeTab === 'findings' && (
 
-        <FindingsPanel />
+        <FindingsPanel projectId={project.project_id} />
 
       )}
       {activeTab === 'ai-report' && (
         <AIReportPanel projectId={project.project_id} />
       )}
       {activeTab === 'bug-bounty' && (
-        <BugBountyPanel addNotification={addNotification} />
+        <BugBountyPanel projectId={project.project_id} addNotification={addNotification} />
+      )}
+      {activeTab === 'proxy' && (
+        <ProxyMonitor />
+      )}
+      {activeTab === 'execution-monitor' && (
+        <ExecutionMonitor
+          projectId={project.project_id}
+          onDockChange={(pos) => localStorage.setItem('execution_dock', pos)}
+        />
+      )}
+      {activeTab === 'tools' && (
+        <ToolRunnerPanel />
       )}
 
     </div>
@@ -1814,11 +1862,12 @@ function OverviewTab({ project }: { project: Project }) {
         ])
         if (cancelled) return
         setActivity(a.events || [])
+        const pf = (s2 as any).project_findings || {};
         setRealStats({
-          findings: ((s2 as any).code_analysis?.patterns_found || 0) + ((s2 as any).web_analysis?.vulnerabilities || 0),
-          critical: (s2 as any).code_analysis?.critical_issues || 0,
-          high: 0,
-          medium: 0,
+          findings: ((s2 as any).code_analysis?.patterns_found || 0) + ((s2 as any).web_analysis?.vulnerabilities || 0) + (pf.total || 0),
+          critical: ((s2 as any).code_analysis?.critical_issues || 0) + (pf.critical || 0),
+          high: ((s2 as any).code_analysis?.high_issues || 0) + (pf.high || 0),
+          medium: ((s2 as any).code_analysis?.medium_issues || 0) + (pf.medium || 0),
           attack_paths: (s2 as any).knowledge_graph?.attack_paths || 0,
           vulnerabilities: (s2 as any).web_analysis?.vulnerabilities || 0,
         })
@@ -1937,75 +1986,42 @@ function OverviewTab({ project }: { project: Project }) {
 
           <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Security Score</h3>
 
-          <div style={{ 
-
-            display: 'flex', 
-
-            alignItems: 'center', 
-
-            justifyContent: 'center',
-
-            flexDirection: 'column',
-
-            padding: '20px'
-
-          }}>
-
-            <div style={{
-
-              width: '120px',
-
-              height: '120px',
-
-              borderRadius: '50%',
-
-              background: 'conic-gradient(#00ff88 0deg 70deg, #1a1a2e 70deg 360deg)',
-
-              display: 'flex',
-
-              alignItems: 'center',
-
-              justifyContent: 'center',
-
-              marginBottom: '16px'
-
-            }}>
-
-              <div style={{
-
-                width: '100px',
-
-                height: '100px',
-
-                borderRadius: '50%',
-
-                background: '#0a0a0f',
-
-                display: 'flex',
-
-                alignItems: 'center',
-
-                justifyContent: 'center',
-
-                fontSize: '28px',
-
-                fontWeight: 'bold',
-
-                color: '#00ff88'
-
-              }}>
-
-                72
-
-              </div>
-
+          {realStats.findings === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
+              <div style={{ fontSize: '14px', color: '#888', fontWeight: '500' }}>No data yet</div>
+              <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>Run an agent to generate findings</div>
             </div>
-
-            <div style={{ fontSize: '14px', color: '#00ff88', fontWeight: '600' }}>Good Security Posture</div>
-
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>Based on {realStats.findings || 0} findings</div>
-
-          </div>
+          ) : (() => {
+            const score = Math.max(0, 100 - (realStats.critical * 20) - (realStats.high * 5) - (realStats.medium * 2))
+            const color = score >= 80 ? '#00ff88' : score >= 50 ? '#ffaa00' : '#ff4444'
+            const label = score >= 80 ? 'Good Security Posture' : score >= 50 ? 'Moderate Risk' : 'Poor Security Posture'
+            const degrees = (score / 100) * 360
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
+                <div style={{
+                  width: '120px', height: '120px', borderRadius: '50%',
+                  background: `conic-gradient(${color} 0deg ${degrees}deg, #1a1a2e ${degrees}deg 360deg)`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px'
+                }}>
+                  <div style={{
+                    width: '100px', height: '100px', borderRadius: '50%', background: '#0a0a0f',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '28px', fontWeight: 'bold', color
+                  }}>
+                    {score}
+                  </div>
+                </div>
+                <div style={{ fontSize: '14px', color, fontWeight: '600' }}>{label}</div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                  {realStats.critical > 0 && <span style={{ color: '#ff4444', marginRight: '8px' }}>{realStats.critical} critical</span>}
+                  {realStats.high > 0 && <span style={{ color: '#ff8844', marginRight: '8px' }}>{realStats.high} high</span>}
+                  {realStats.medium > 0 && <span style={{ color: '#ffaa00' }}>{realStats.medium} medium</span>}
+                  {realStats.critical === 0 && realStats.high === 0 && realStats.medium === 0 && <span>No issues found</span>}
+                </div>
+              </div>
+            )
+          })()}
 
         </div>
 
@@ -2391,155 +2407,141 @@ function getPhase5Capabilities(agentId: string): string[] {
 
 // ============ FINDINGS PANEL ============
 
-function FindingsPanel() {
+function FindingsPanel({ projectId }: { projectId: string }) {
 
-  const [findings] = useState<Finding[]>([])
+  const [findings, setFindings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>('All');
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/findings`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setFindings(data.findings || []);
+        }
+      } catch (e) { /* keep empty */ }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
+  const filtered = filter === 'All'
+    ? findings
+    : findings.filter(f => f.severity?.toUpperCase() === filter.toUpperCase());
 
   const severityColors: Record<string, string> = {
-
-    critical: '#ff4444',
-
-    high: '#ff8844',
-
-    medium: '#ffaa00',
-
-    low: '#00d4ff',
-
-    info: '#888'
-
-  }
-
-
+    CRITICAL: '#ff4444',
+    HIGH: '#ff8844',
+    MEDIUM: '#ffaa00',
+    LOW: '#00d4ff',
+    INFO: '#888'
+  };
 
   return (
-
     <div>
-
       <div style={{ 
-
         background: 'rgba(15, 15, 26, 0.95)',
-
         borderRadius: '16px',
-
         padding: '24px',
-
         border: '1px solid rgba(255,255,255,0.05)',
-
         marginBottom: '24px'
-
       }}>
-
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Filters</h3>
-
-        <div style={{ display: 'flex', gap: '12px' }}>
-
-          {['All', 'Critical', 'High', 'Medium', 'Low'].map(filter => (
-
-            <button key={filter} style={{
-
-              background: filter === 'All' ? 'rgba(0, 212, 255, 0.1)' : 'rgba(255,255,255,0.05)',
-
-              border: `1px solid ${filter === 'All' ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`,
-
-              color: filter === 'All' ? '#00d4ff' : '#888',
-
-              padding: '8px 16px',
-
-              borderRadius: '6px',
-
-              cursor: 'pointer',
-
-              fontSize: '12px'
-
-            }}>
-
-              {filter}
-
-            </button>
-
-          ))}
-
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Filters</h3>
+          {findings.length > 0 && (
+            <span style={{ fontSize: '12px', color: '#888' }}>{findings.length} unique finding{findings.length !== 1 ? 's' : ''}</span>
+          )}
         </div>
-
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {['All', 'Critical', 'High', 'Medium', 'Low'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              background: filter === f ? 'rgba(0, 212, 255, 0.1)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${filter === f ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`,
+              color: filter === f ? '#00d4ff' : '#888',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              transition: 'all 0.2s',
+            }}>
+              {f}
+            </button>
+          ))}
+        </div>
       </div>
 
-
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-        {findings.map(finding => (
-
-          <div key={finding.id} style={{
-
-            background: 'rgba(15, 15, 26, 0.95)',
-
-            borderRadius: '12px',
-
-            padding: '20px',
-
-            border: `1px solid ${severityColors[finding.severity]}30`,
-
-            borderLeft: `4px solid ${severityColors[finding.severity]}`
-
-          }}>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-
-              <h4 style={{ fontSize: '15px', fontWeight: '600' }}>{finding.title}</h4>
-
-              <span style={{
-
-                background: `${severityColors[finding.severity]}20`,
-
-                color: severityColors[finding.severity],
-
-                fontSize: '11px',
-
-                fontWeight: '600',
-
-                padding: '4px 8px',
-
-                borderRadius: '4px',
-
-                textTransform: 'uppercase'
-
-              }}>
-
-                {finding.severity}
-
-              </span>
-
+      {loading ? (
+        <div style={{ padding: '48px', textAlign: 'center', color: '#666' }}>
+          <div style={{ width: '32px', height: '32px', border: '3px solid rgba(0,212,255,0.15)', borderTopColor: '#00d4ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+          <div style={{ fontSize: '13px' }}>Loading findings...</div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: '48px', textAlign: 'center', color: '#666' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔍</div>
+          <div style={{ fontWeight: '600', marginBottom: '4px', color: '#888', fontSize: '15px' }}>No findings yet</div>
+          <div style={{ fontSize: '13px' }}>Run agents or the Bug Bounty pipeline to generate findings. Each vulnerability appears here only once, deduplicated by title and target.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {filtered.map((finding, idx) => (
+            <div key={finding.id || idx} style={{
+              background: 'rgba(15, 15, 26, 0.95)',
+              borderRadius: '12px',
+              padding: '20px',
+              border: `1px solid ${(severityColors[finding.severity] || '#888')}30`,
+              borderLeft: `4px solid ${severityColors[finding.severity] || '#888'}`,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = (severityColors[finding.severity] || '#888'); e.currentTarget.style.transform = 'translateX(4px)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${(severityColors[finding.severity] || '#888')}30`; e.currentTarget.style.transform = 'translateX(0)'; }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <h4 style={{ fontSize: '15px', fontWeight: '600' }}>{finding.title}</h4>
+                <span style={{
+                  background: `${(severityColors[finding.severity] || '#888')}20`,
+                  color: severityColors[finding.severity] || '#888',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  textTransform: 'uppercase'
+                }}>
+                  {finding.severity}
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#888', marginBottom: '12px' }}>{finding.description}</p>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666', flexWrap: 'wrap' }}>
+                {finding.target && <span>📍 {finding.target}</span>}
+                {finding.cvss && <span>📊 CVSS: {finding.cvss}</span>}
+                {finding.source && <span>🔗 Source: {finding.source}</span>}
+                {finding.references && finding.references.length > 0 && (
+                  <span>📋 {finding.references.join(', ')}</span>
+                )}
+              </div>
+              {finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 && (
+                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '12px', color: '#aaa' }}>
+                  <div style={{ fontWeight: '600', marginBottom: '8px', color: '#00d4ff', fontSize: '11px', textTransform: 'uppercase' }}>Steps to Reproduce</div>
+                  {finding.steps_to_reproduce.map((step: any, i: number) => (
+                    <div key={i} style={{ marginBottom: '4px', paddingLeft: '8px', borderLeft: '2px solid rgba(0,212,255,0.3)' }}>
+                      {i + 1}. {typeof step === 'string' ? step : step.action || step.description || JSON.stringify(step)}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-
-            <p style={{ fontSize: '13px', color: '#888', marginBottom: '12px' }}>{finding.description}</p>
-
-            <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666' }}>
-
-              <span>📍 {finding.location}</span>
-
-              <span>🔗 {finding.cwe}</span>
-
-              {finding.owasp && <span>📋 OWASP: {finding.owasp.join(', ')}</span>}
-
-            </div>
-
-          </div>
-
-        ))}
-
-      </div>
-
+          ))}
+        </div>
+      )}
     </div>
-
-  )
-
+  );
 }
 
-
-
 // ============ AGENTS PANEL ============
+
 
 function AgentsPanel({ runningAgent, onRunAgent, output }: { 
 
@@ -2893,7 +2895,7 @@ function AnalysisPanel({ projectId }: { projectId: string }) {
 
                       marginBottom: '8px',
 
-                      borderLeft: `3px solid ${p.severity === 'critical' ? '#ff4444' : p.severity === 'high' ? '#ff8844' : '#ffaa00'}`
+                      borderLeft: `3px solid ${p.severity === 'CRITICAL' ? '#ff4444' : p.severity === 'HIGH' ? '#ff8844' : p.severity === 'MEDIUM' ? '#ffaa00' : '#888'}`
 
                     }}>
 
@@ -2935,16 +2937,10 @@ function AnalysisPanel({ projectId }: { projectId: string }) {
 
 // ============ THREAT HUNT VIEW ============
 
-function _ThreatHuntView() {
-
-  const [alerts] = useState<ThreatAlert[]>([
-
-    { id: '1', type: 'malware', severity: 'critical', title: 'Suspicious PowerShell Execution', description: 'Base64 encoded command detected in process creation', timestamp: new Date().toISOString(), iocs: ['192.168.1.105', 'malware.exe'], yara_matches: ['meterpreter', 'covenant'] },
-
-    { id: '2', type: 'network', severity: 'high', title: 'C2 Communication Detected', description: 'Beaconing behavior to known malicious IP', timestamp: new Date(Date.now() - 300000).toISOString(), iocs: ['185.220.101.34'], yara_matches: ['apt_threat'] },
-
-    { id: '3', type: 'anomaly', severity: 'medium', title: 'Unusual Login Pattern', description: 'Login from multiple geographies within 1 hour', timestamp: new Date(Date.now() - 600000).toISOString(), iocs: [], yara_matches: [] },
-
+function _ThreatHuntView() {  const [alerts] = useState<ThreatAlert[]>([
+    { id: '1', type: 'malware', severity: 'CRITICAL', title: 'Suspicious PowerShell Execution', description: 'Base64 encoded command detected in process creation', timestamp: new Date().toISOString(), iocs: ['192.168.1.105', 'malware.exe'], yara_matches: ['meterpreter', 'covenant'] },
+    { id: '2', type: 'network', severity: 'HIGH', title: 'C2 Communication Detected', description: 'Beaconing behavior to known malicious IP', timestamp: new Date(Date.now() - 300000).toISOString(), iocs: ['185.220.101.34'], yara_matches: ['apt_threat'] },
+    { id: '3', type: 'anomaly', severity: 'MEDIUM', title: 'Unusual Login Pattern', description: 'Login from multiple geographies within 1 hour', timestamp: new Date(Date.now() - 600000).toISOString(), iocs: [], yara_matches: [] },
   ])
 
 
@@ -3079,7 +3075,7 @@ function _ThreatHuntView() {
 
             padding: '20px',
 
-            border: `1px solid ${alert.severity === 'critical' ? '#ff4444' : alert.severity === 'high' ? '#ff8844' : '#ffaa00'}30`
+            border: `1px solid ${alert.severity === 'CRITICAL' ? '#ff4444' : alert.severity === 'HIGH' ? '#ff8844' : '#ffaa00'}30`
 
           }}>
 
@@ -3093,11 +3089,8 @@ function _ThreatHuntView() {
 
               </div>
 
-              <span style={{
-
-                background: `${alert.severity === 'critical' ? '#ff4444' : alert.severity === 'high' ? '#ff8844' : '#ffaa00'}20`,
-
-                color: alert.severity === 'critical' ? '#ff4444' : alert.severity === 'high' ? '#ff8844' : '#ffaa00',
+              <span style={{                background: `${alert.severity === 'CRITICAL' ? '#ff4444' : alert.severity === 'HIGH' ? '#ff8844' : '#ffaa00'}20`,
+                color: alert.severity === 'CRITICAL' ? '#ff4444' : alert.severity === 'HIGH' ? '#ff8844' : '#ffaa00',
 
                 fontSize: '11px',
 
@@ -3156,1086 +3149,6 @@ function _ThreatHuntView() {
 
 
 // ============ AUTO AGENT SELECT VIEW ============
-
-function _AutoAgentSelectView() {
-
-  const [selectedVulnType, setSelectedVulnType] = useState<string>('')
-
-  const [scanResults, setScanResults] = useState<any>(null)
-
-  const [isScanning, setIsFullScanning] = useState(false)
-
-  
-
-  const vulnToAgents: Record<string, {primary: string, secondary: string[], description: string, owasp: string[], payloads: string[], severity: string}> = {
-
-    'sql_injection': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence', 'security_operations'],
-
-      description: 'SQL Injection requires API Security agent with comprehensive SQL injection payloads',
-
-      owasp: ['A01', 'A05'],
-
-      payloads: ["' OR '1'='1", "1' UNION SELECT NULL--", "'; DROP TABLE users; --", "1' ORDER BY 1--", "admin'--"],
-
-      severity: 'critical'
-
-    },
-
-    'xss': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'XSS requires API Security agent for fuzzing with XSS payloads and DOM analysis',
-
-      owasp: ['A05', 'A07'],
-
-      payloads: ['<script>alert(document.domain)</script>', '<img src=x onerror=alert(1)>', '<svg onload=alert(1)>', '#\"><img src=x onerror=alert(1)>', 'javascript:alert(document.domain)'],
-
-      severity: 'high'
-
-    },
-
-    'idor': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence', 'adaptive_defense'],
-
-      description: 'IDOR requires API Security agent for authorization testing and resource enumeration',
-
-      owasp: ['A01'],
-
-      payloads: ['/api/users/123 → /api/users/124', 'POST ID manipulation', 'UUID enumeration', 'HTTP parameter pollution'],
-
-      severity: 'high'
-
-    },
-
-    'ssrf': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence', 'supply_chain'],
-
-      description: 'SSRF requires API Security agent for protocol testing and internal network probing',
-
-      owasp: ['A01', 'A05', 'A10'],
-
-      payloads: ['http://169.254.169.254/', 'http://localhost:8500', 'file:///etc/passwd', 'gopher://127.0.0.1:6379/_INFO', 'dict://localhost:11211/%0astats'],
-
-      severity: 'critical'
-
-    },
-
-    'rce': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence', 'adaptive_defense', 'security_operations'],
-
-      description: 'RCE requires API Security agent with command injection payloads + Threat Intel for malware analysis',
-
-      owasp: ['A05', 'A08'],
-
-      payloads: ['`whoami`', '$(whoami)', '| whoami', '; whoami', '&& whoami', "'; exec master..xp_cmdshell 'whoami'--", '{{7*7}}', '${exec whoami}'],
-
-      severity: 'critical'
-
-    },
-
-    'xxe': {
-
-      primary: 'api_security',
-
-      secondary: ['supply_chain'],
-
-      description: 'XXE requires API Security agent for XML parsing testing and file read exploitation',
-
-      owasp: ['A05', 'A08'],
-
-      payloads: ['<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM "file:///etc/passwd">]>', '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="expect://ls"/>', 'Billion Laughs attack payload'],
-
-      severity: 'critical'
-
-    },
-
-    'ssti': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'SSTI requires API Security agent with template injection payloads for code execution',
-
-      owasp: ['A05', 'A10'],
-
-      payloads: ['{{7*7}}', '{{config}}', '${7*7}', '${T(SYSTEM)}', '{{request|attr("application")}}'],
-
-      severity: 'critical'
-
-    },
-
-    'graphql': {
-
-      primary: 'api_security',
-
-      secondary: ['supply_chain'],
-
-      description: 'GraphQL requires API Security agent with introspection and batch attack testing',
-
-      owasp: ['A01', 'A05'],
-
-      payloads: [
-        // Introspection Attacks
-        `{"query":"{ __schema { types { name fields { name } } queryType { name } mutationType { name } } }"}`,
-        `{"query":"{ __type(name: \"User\") { name fields { name type { name } } } }"}`,
-        `{"query":"{ __schema { mutationType { fields { name description args { name type { name } } } } } }"}`,
-        // Batching Attacks (Alias Abuse)
-        `{"query":"mutation { login1: login(user: \"admin\", pass: \"1111\") { success } login2: login(user: \"admin\", pass: \"1112\") { success } login3: login(user: \"admin\", pass: \"1113\") { success } }"}`,
-        `{"query":"{ a1: user(id: \"1\") { name } a2: user(id: \"1\") { name } a3: user(id: \"1\") { name } a4: user(id: \"1\") { name } a5: user(id: \"1\") { name } }"}`,
-        // JSON List Batching
-        `[{"query":"mutation { login(user: \"admin\", pass: \"1111\") }"},{"query":"mutation { login(user: \"admin\", pass: \"1112\") }"},{"query":"mutation { login(user: \"admin\", pass: \"1113\") }"}]`,
-        // Nested Query DoS
-        `{"query":"{ user { friends { friends { friends { friends { name } } } } } }"}`,
-        // Circular Reference DoS
-        `{"query":"{ user(id: \"1\") { posts { author { posts { author { name } } } } } }"}`,
-        // Mutation Injection
-        `{"query":"mutation { signIn(login: \"Admin\", password: \"secret\") { success token } }"}`,
-        // SQL/NoSQL in GraphQL params
-        `{"query":"{ doctors(search: \"{$regex:.*,lastName:Admin}\") { firstName } }"}`,
-      ],
-
-      severity: 'high'
-
-    },
-
-    'nosql': {
-
-      primary: 'api_security',
-
-      secondary: ['security_operations'],
-
-      description: 'NoSQL Injection requires API Security agent with MongoDB/Redis operator payloads',
-
-      owasp: ['A05'],
-
-      payloads: ['{"$gt": ""}', '{"$where": "1=1"}', '{"$regex": ".*"}', '{"login": {"$ne": null}}', '{"$expr": {"$gt": [1, 1]}}'],
-
-      severity: 'critical'
-
-    },
-
-    'auth_bypass': {
-
-      primary: 'api_security',
-
-      secondary: ['adaptive_defense', 'security_operations'],
-
-      description: 'Auth bypass requires API Security agent + Adaptive Defense for session analysis',
-
-      owasp: ['A02', 'A07'],
-
-      payloads: ["' OR 1=1--", 'alg: none JWT attack', 'Session fixation', 'OAuth redirect_uri manipulation', 'Basic Auth bypass'],
-
-      severity: 'critical'
-
-    },
-
-    'oauth': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'OAuth vulnerabilities require API Security agent with flow manipulation payloads',
-
-      owasp: ['A01', 'A07'],
-
-      payloads: ['redirect_uri: http://evil.com', 'redirect_uri: null/https://expected.com@evil.com', 'state parameter missing', 'code reuse after logout', 'Scope escalation'],
-
-      severity: 'high'
-
-    },
-
-    'path_traversal': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'Path traversal requires API Security agent for file operation fuzzing',
-
-      owasp: ['A01', 'A05'],
-
-      payloads: ['../../../etc/passwd', '..\\..\\..\\windows\\system32\\config\\sam', '%2e%2e%2f%2e%2e%2fetc%2fpasswd', 'file:///etc/passwd'],
-
-      severity: 'high'
-
-    },
-
-    'open_redirect': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'Open redirect requires API Security agent for redirect parameter testing',
-
-      owasp: ['A01'],
-
-      payloads: ['https://evil.com', '//evil.com', '///evil.com', 'https://expected.com@evil.com', '\\evil.com'],
-
-      severity: 'medium'
-
-    },
-
-    'business_logic': {
-
-      primary: 'api_security',
-
-      secondary: ['adaptive_defense'],
-
-      description: 'Business logic requires API Security agent + Adaptive Defense for concurrent testing',
-
-      owasp: ['A04', 'A08'],
-
-      payloads: ['Price manipulation: item_price=-100', 'Quantity overflow', 'Race conditions', 'Workflow bypass'],
-
-      severity: 'high'
-
-    },
-
-    'toctou': {
-
-      primary: 'api_security',
-
-      secondary: ['adaptive_defense', 'security_operations'],
-
-      description: 'TOCTOU race conditions require API Security agent + Adaptive Defense for atomicity testing',
-
-      owasp: ['A04', 'A08'],
-
-      payloads: ['Symlink attack during file operations', 'Concurrent authentication requests', 'File race in --skip-existing', 'Double-free after check'],
-
-      severity: 'high'
-
-    },
-
-    'deserialization': {
-
-      primary: 'api_security',
-
-      secondary: ['threat_intelligence'],
-
-      description: 'Deserialization requires API Security agent + Threat Intel for gadget chain analysis',
-
-      owasp: ['A08', 'A05'],
-
-      payloads: ['O:10:"Example":1:{s:3:"cmd";s:8:"whoami";}', 'rO0ABXQAL1VuZGVmaW5lZEv/////dHJhY2U=', '{{obj.__class__.__mro__[1].__subclasses__()}}', 'bash -c {echo,YmFzaCAtaSA+JG1hc2g=}|{base64,-d}|{bash,-i}'],
-
-      severity: 'critical'
-
-    },
-
-    'memory': {
-
-      primary: 'threat_intelligence',
-
-      secondary: ['api_security', 'adaptive_defense'],
-
-      description: 'Memory corruption requires Threat Intelligence agent + Adaptive Defense for fuzzing',
-
-      owasp: ['A08', 'A10'],
-
-      payloads: ["Heap overflow: A'*10000", 'Use-after-free patterns', 'Double-free: free() same twice', 'Format string: %s%s%s%s', 'Integer overflow: large value'],
-
-      severity: 'critical'
-
-    },
-
-    'ci_cd': {
-
-      primary: 'supply_chain',
-
-      secondary: ['security_operations', 'adaptive_defense'],
-
-      description: 'CI/CD security requires Supply Chain agent for pipeline analysis + Security Operations for monitoring',
-
-      owasp: ['A03', 'A08'],
-
-      payloads: ['Secrets in workflow files', 'Untrusted checkout actions', 'Missing security scans', 'Exposed credentials in logs', 'Privilege escalation in pipelines'],
-
-      severity: 'critical'
-
-    },
-
-    'sensitive_data': {
-
-      primary: 'supply_chain',
-
-      secondary: ['security_operations'],
-
-      description: 'Sensitive data exposure requires Supply Chain agent for data classification + Security Operations for monitoring',
-
-      owasp: ['A02', 'A04'],
-
-      payloads: ['Hardcoded API keys', 'Passwords in code', 'Exposed .env files', 'Database credentials in logs', 'AWS keys in source code'],
-
-      severity: 'high'
-
-    }
-
-  }
-
-
-
-
-
-
-  const handleScan = async () => {
-
-    if (!selectedVulnType) return
-
-    setIsFullScanning(true)
-
-    setScanResults(null)
-
-    
-
-    // Simulate scanning with auto-recommendation
-
-    setTimeout(() => {
-
-      const config = vulnToAgents[selectedVulnType]
-
-      setScanResults({
-
-        vulnerability: selectedVulnType,
-
-        recommendedAgent: config.primary,
-
-        secondaryAgents: config.secondary,
-
-        description: config.description,
-
-        owaspCategories: config.owasp,
-
-        testPayloads: config.payloads.slice(0, 5),
-
-        severity: config.severity,
-
-        confidence: 'high'
-
-      })
-
-      setIsFullScanning(false)
-
-    }, 1500)
-
-  }
-
-
-
-  const agentInfo: Record<string, {name: string, color: string, icon: string, description: string}> = {
-
-    threat_intelligence: { name: '🔍 Threat Intelligence', color: '#ff8844', icon: '🔍', description: 'YARA rules, IOC enrichment, malware analysis' },
-
-    security_operations: { name: '🛡️ Security Operations', color: '#00d4ff', icon: '🛡️', description: 'SIEM integration, SOAR playbooks, alert triage' },
-
-    adaptive_defense: { name: '⚡ Adaptive Defense', color: '#aa88ff', icon: '⚡', description: 'ML anomaly detection, behavioral analysis' },
-
-    supply_chain: { name: '📦 Supply Chain', color: '#00ff88', icon: '📦', description: 'SBOM generation, CVE scanning, license compliance' },
-
-    api_security: { name: '🔗 API Security', color: '#ffaa00', icon: '🔗', description: 'OpenAPI/GraphQL analysis, fuzzing, auth testing' },
-
-  }
-
-
-
-  return (
-
-    <div>
-
-      {/* Header */}
-
-      <div style={{ 
-
-        background: 'linear-gradient(135deg, rgba(170, 136, 255, 0.15), rgba(0, 212, 255, 0.1))',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(170, 136, 255, 0.3)',
-
-        marginBottom: '24px'
-
-      }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-
-          <span style={{ fontSize: '40px' }}>⚡</span>
-
-          <div>
-
-            <h2 style={{ fontSize: '28px', fontWeight: 'bold', background: 'linear-gradient(90deg, #aa88ff, #00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-
-              Auto Agent Selection
-
-            </h2>
-
-            <p style={{ fontSize: '13px', color: '#888' }}>AI-powered agent selection based on vulnerability type - select a bug type and get the perfect agent configuration</p>
-
-          </div>
-
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-
-          <span style={{ background: 'rgba(170,136,255,0.2)', color: '#aa88ff', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>16 Vulnerability Types</span>
-
-          <span style={{ background: 'rgba(0,212,255,0.2)', color: '#00d4ff', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>5 Phase 5 Agents</span>
-
-          <span style={{ background: 'rgba(0,255,136,0.2)', color: '#00ff88', padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Auto-Configure</span>
-
-        </div>
-
-      </div>
-
-
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-
-        {/* Vulnerability Selector */}
-
-        <div style={{ 
-
-          background: 'rgba(15, 15, 26, 0.95)',
-
-          borderRadius: '16px',
-
-          padding: '24px',
-
-          border: '1px solid rgba(255,255,255,0.05)'
-
-        }}>
-
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#aa88ff' }}>Select Vulnerability Type</h3>
-
-          
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '20px' }}>
-
-            {Object.keys(vulnToAgents).map(vuln => (
-
-              <button
-
-                key={vuln}
-
-                onClick={() => setSelectedVulnType(vuln)}
-
-                style={{
-
-                  background: selectedVulnType === vuln ? `${vulnToAgents[vuln].severity === 'critical' ? '#ff4444' : vulnToAgents[vuln].severity === 'high' ? '#ff8844' : '#ffaa00'}25` : 'rgba(0,0,0,0.3)',
-
-                  border: `1px solid ${selectedVulnType === vuln ? (vulnToAgents[vuln].severity === 'critical' ? '#ff4444' : vulnToAgents[vuln].severity === 'high' ? '#ff8844' : '#ffaa00') : 'rgba(255,255,255,0.1)'}`,
-
-                  borderRadius: '8px',
-
-                  padding: '10px',
-
-                  cursor: 'pointer',
-
-                  textAlign: 'left',
-
-                  transition: 'all 0.2s'
-
-                }}
-
-              >
-
-                <span style={{ fontSize: '12px', color: selectedVulnType === vuln ? '#fff' : '#888', fontWeight: selectedVulnType === vuln ? '600' : '400', textTransform: 'capitalize' }}>
-
-                  {vuln.replace(/_/g, ' ')}
-
-                </span>
-
-              </button>
-
-            ))}
-
-          </div>
-
-
-
-          <button
-
-            onClick={handleScan}
-
-            disabled={!selectedVulnType || isScanning}
-
-            style={{
-
-              width: '100%',
-
-              background: isScanning ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #aa88ff, #00d4ff)',
-
-              color: isScanning ? '#666' : '#fff',
-
-              border: 'none',
-
-              borderRadius: '10px',
-
-              padding: '14px',
-
-              fontWeight: '700',
-
-              cursor: isScanning ? 'not-allowed' : 'pointer',
-
-              fontSize: '14px'
-
-            }}
-
-          >
-
-            {isScanning ? '⏳ Analyzing...' : '⚡ Auto-Select Best Agent'}
-
-          </button>
-
-        </div>
-
-
-
-        {/* Results Panel */}
-
-        <div style={{ 
-
-          background: 'rgba(15, 15, 26, 0.95)',
-
-          borderRadius: '16px',
-
-          padding: '24px',
-
-          border: '1px solid rgba(255,255,255,0.05)'
-
-        }}>
-
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#00d4ff' }}>Agent Configuration</h3>
-
-          
-
-          {scanResults ? (
-
-            <div>
-
-              {/* Primary Agent */}
-
-              <div style={{ 
-
-                background: `${agentInfo[scanResults.recommendedAgent]?.color || '#00d4ff'}15`,
-
-                border: `2px solid ${agentInfo[scanResults.recommendedAgent]?.color || '#00d4ff'}`,
-
-                borderRadius: '12px',
-
-                padding: '16px',
-
-                marginBottom: '16px'
-
-              }}>
-
-                <div style={{ fontSize: '12px', color: '#00ff88', fontWeight: '600', marginBottom: '8px' }}>PRIMARY AGENT (Recommended)</div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-
-                  <span style={{ fontSize: '32px' }}>{agentInfo[scanResults.recommendedAgent]?.icon || '🤖'}</span>
-
-                  <div>
-
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: agentInfo[scanResults.recommendedAgent]?.color }}>{agentInfo[scanResults.recommendedAgent]?.name || scanResults.recommendedAgent}</div>
-
-                    <div style={{ fontSize: '12px', color: '#888' }}>{agentInfo[scanResults.recommendedAgent]?.description}</div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-
-
-              {/* Secondary Agents */}
-
-              <div style={{ marginBottom: '16px' }}>
-
-                <div style={{ fontSize: '12px', color: '#888', fontWeight: '600', marginBottom: '8px' }}>SECONDARY AGENTS</div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-                  {scanResults.secondaryAgents.map((agent: string) => (
-
-                    <div key={agent} style={{
-
-                      background: `${agentInfo[agent]?.color || '#888'}15`,
-
-                      border: `1px solid ${agentInfo[agent]?.color || '#888'}40`,
-
-                      borderRadius: '8px',
-
-                      padding: '12px',
-
-                      display: 'flex',
-
-                      alignItems: 'center',
-
-                      gap: '10px'
-
-                    }}>
-
-                      <span style={{ fontSize: '20px' }}>{agentInfo[agent]?.icon || '🤖'}</span>
-
-                      <div>
-
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: agentInfo[agent]?.color }}>{agentInfo[agent]?.name || agent}</div>
-
-                        <div style={{ fontSize: '11px', color: '#666' }}>{agentInfo[agent]?.description}</div>
-
-                      </div>
-
-                    </div>
-
-                  ))}
-
-                </div>
-
-              </div>
-
-
-
-              {/* OWASP Categories */}
-
-              <div style={{ marginBottom: '16px' }}>
-
-                <div style={{ fontSize: '12px', color: '#888', fontWeight: '600', marginBottom: '8px' }}>OWASP CATEGORIES</div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-
-                  {scanResults.owaspCategories.map((cat: string) => (
-
-                    <span key={cat} style={{ background: 'rgba(255,68,68,0.2)', color: '#ff4444', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '4px' }}>{cat}</span>
-
-                  ))}
-
-                </div>
-
-              </div>
-
-
-
-              {/* Severity */}
-
-              <div style={{ marginBottom: '16px' }}>
-
-                <div style={{ fontSize: '12px', color: '#888', fontWeight: '600', marginBottom: '8px' }}>SEVERITY</div>
-
-                <span style={{ 
-
-                  background: scanResults.severity === 'critical' ? 'rgba(255,68,68,0.2)' : scanResults.severity === 'high' ? 'rgba(255,136,68,0.2)' : 'rgba(255,170,0,0.2)',
-
-                  color: scanResults.severity === 'critical' ? '#ff4444' : scanResults.severity === 'high' ? '#ff8844' : '#ffaa00',
-
-                  fontSize: '14px', fontWeight: '700', padding: '6px 16px', borderRadius: '4px', textTransform: 'uppercase'
-
-                }}>
-
-                  {scanResults.severity}
-
-                </span>
-
-              </div>
-
-
-
-              {/* Test Payloads */}
-
-              <div>
-
-                <div style={{ fontSize: '12px', color: '#888', fontWeight: '600', marginBottom: '8px' }}>RECOMMENDED PAYLOADS</div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
-                  {scanResults.testPayloads.map((payload: string, i: number) => (
-
-                    <code key={i} style={{ 
-
-                      background: 'rgba(0,0,0,0.4)', 
-
-                      color: '#00d4ff', 
-
-                      fontSize: '11px', 
-
-                      padding: '8px 12px', 
-
-                      borderRadius: '4px',
-
-                      fontFamily: 'monospace',
-
-                      overflow: 'auto',
-
-                      whiteSpace: 'nowrap'
-
-                    }}>{payload}</code>
-
-                  ))}
-
-                </div>
-
-              </div>
-
-            </div>
-
-          ) : (
-
-            <div style={{ color: '#666', fontSize: '13px', textAlign: 'center', paddingTop: '80px' }}>
-
-              Select a vulnerability type and click "Auto-Select Best Agent" to see recommendations
-
-            </div>
-
-          )}
-
-        </div>
-
-      </div>
-
-
-
-      {/* Agent Info Grid */}
-
-      <div style={{ marginTop: '24px' }}>
-
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#888' }}>All Available Phase 5 Agents</h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-
-          {Object.entries(agentInfo).map(([id, info]) => (
-
-            <div key={id} style={{
-
-              background: 'rgba(15, 15, 26, 0.95)',
-
-              border: `1px solid ${info.color}40`,
-
-              borderRadius: '12px',
-
-              padding: '16px',
-
-              textAlign: 'center'
-
-            }}>
-
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>{info.icon}</div>
-
-              <div style={{ fontSize: '13px', fontWeight: '600', color: info.color, marginBottom: '4px' }}>{info.name.split(' ')[1]}</div>
-
-              <div style={{ fontSize: '10px', color: '#666' }}>{info.description.split(',')[0]}</div>
-
-            </div>
-
-          ))}
-
-        </div>
-
-      </div>
-
-    </div>
-
-  )
-
-}
-
-
-
-
-
-
-// ============ SUPPLY CHAIN VIEW ============
-
-function _SupplyChainView() {
-
-  const [sbom] = useState<SBOMEntry[]>([
-
-    { name: 'lodash', version: '4.17.21', license: 'MIT', vulnerabilities: ['CVE-2021-23337'], risk_score: 7.2 },
-
-    { name: 'axios', version: '0.21.1', license: 'MIT', vulnerabilities: [], risk_score: 2.1 },
-
-    { name: 'express', version: '4.17.1', license: 'MIT', vulnerabilities: ['CVE-2022-24999'], risk_score: 5.5 },
-
-    { name: 'react', version: '17.0.2', license: 'MIT', vulnerabilities: [], risk_score: 1.2 },
-
-    { name: 'ws', version: '7.4.3', license: 'MIT', vulnerabilities: [], risk_score: 0.8 },
-
-  ])
-
-
-
-  const getRiskColor = (score: number) => {
-
-    if (score >= 7) return '#ff4444'
-
-    if (score >= 4) return '#ff8844'
-
-    if (score >= 2) return '#ffaa00'
-
-    return '#00ff88'
-
-  }
-
-
-
-  return (
-
-    <div>
-
-      {/* Supply Chain Stats */}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-
-        <StatCard label="Total Dependencies" value={sbom.length.toString()} icon="📦" color="#00d4ff" />
-
-        <StatCard label="Vulnerable" value={sbom.filter(s => s.vulnerabilities.length > 0).length.toString()} icon="⚠️" color="#ff8844" />
-
-        <StatCard label="High Risk" value={sbom.filter(s => s.risk_score >= 7).length.toString()} icon="🚨" color="#ff4444" />
-
-        <StatCard label="License Issues" value="0" icon="📋" color="#00ff88" />
-
-      </div>
-
-
-
-      {/* Actions */}
-
-      <div style={{ 
-
-        background: 'rgba(15, 15, 26, 0.95)',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(255,255,255,0.05)',
-
-        marginBottom: '24px'
-
-      }}>
-
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>SBOM Actions</h3>
-
-        <div style={{ display: 'flex', gap: '12px' }}>
-
-          <button style={{
-
-            background: 'linear-gradient(135deg, #00d4ff, #00ff88)',
-
-            border: 'none',
-
-            color: '#000',
-
-            padding: '12px 20px',
-
-            borderRadius: '8px',
-
-            cursor: 'pointer',
-
-            fontSize: '13px',
-
-            fontWeight: '700'
-
-          }}>
-
-            📦 Generate SBOM
-
-          </button>
-
-          <button style={{
-
-            background: 'rgba(255,255,255,0.05)',
-
-            border: '1px solid rgba(255,255,255,0.1)',
-
-            color: '#888',
-
-            padding: '12px 20px',
-
-            borderRadius: '8px',
-
-            cursor: 'pointer',
-
-            fontSize: '13px'
-
-          }}>
-
-            📊 Export SPDX
-
-          </button>
-
-          <button style={{
-
-            background: 'rgba(255,255,255,0.05)',
-
-            border: '1px solid rgba(255,255,255,0.1)',
-
-            color: '#888',
-
-            padding: '12px 20px',
-
-            borderRadius: '8px',
-
-            cursor: 'pointer',
-
-            fontSize: '13px'
-
-          }}>
-
-            🔍 Scan Vulnerabilities
-
-          </button>
-
-        </div>
-
-      </div>
-
-
-
-      {/* SBOM Table */}
-
-      <div style={{ 
-
-        background: 'rgba(15, 15, 26, 0.95)',
-
-        borderRadius: '16px',
-
-        padding: '24px',
-
-        border: '1px solid rgba(255,255,255,0.05)'
-
-      }}>
-
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Software Bill of Materials</h3>
-
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-
-          <thead>
-
-            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-
-              <th style={{ textAlign: 'left', padding: '12px', color: '#666', fontSize: '12px', fontWeight: '600' }}>Package</th>
-
-              <th style={{ textAlign: 'left', padding: '12px', color: '#666', fontSize: '12px', fontWeight: '600' }}>Version</th>
-
-              <th style={{ textAlign: 'left', padding: '12px', color: '#666', fontSize: '12px', fontWeight: '600' }}>License</th>
-
-              <th style={{ textAlign: 'left', padding: '12px', color: '#666', fontSize: '12px', fontWeight: '600' }}>Vulnerabilities</th>
-
-              <th style={{ textAlign: 'left', padding: '12px', color: '#666', fontSize: '12px', fontWeight: '600' }}>Risk Score</th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            {sbom.map((entry, i) => (
-
-              <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-
-                <td style={{ padding: '16px 12px', fontSize: '14px', fontWeight: '600' }}>{entry.name}</td>
-
-                <td style={{ padding: '16px 12px', fontSize: '13px', color: '#00d4ff', fontFamily: 'monospace' }}>{entry.version}</td>
-
-                <td style={{ padding: '16px 12px', fontSize: '12px', color: '#888' }}>{entry.license}</td>
-
-                <td style={{ padding: '16px 12px' }}>
-
-                  {entry.vulnerabilities.length > 0 ? (
-
-                    <span style={{ 
-
-                      background: 'rgba(255, 68, 68, 0.1)', 
-
-                      color: '#ff4444', 
-
-                      fontSize: '11px', 
-
-                      fontWeight: '600',
-
-                      padding: '4px 8px',
-
-                      borderRadius: '4px'
-
-                    }}>
-
-                      {entry.vulnerabilities.length} CVE{entry.vulnerabilities.length > 1 ? 's' : ''}
-
-                    </span>
-
-                  ) : (
-
-                    <span style={{ color: '#00ff88', fontSize: '12px' }}>✓ None</span>
-
-                  )}
-
-                </td>
-
-                <td style={{ padding: '16px 12px' }}>
-
-                  <span style={{
-
-                    background: `${getRiskColor(entry.risk_score)}20`,
-
-                    color: getRiskColor(entry.risk_score),
-
-                    fontSize: '13px',
-
-                    fontWeight: '600',
-
-                    padding: '4px 12px',
-
-                    borderRadius: '4px'
-
-                  }}>
-
-                    {entry.risk_score.toFixed(1)}
-
-                  </span>
-
-                </td>
-
-              </tr>
-
-            ))}
-
-          </tbody>
-
-        </table>
-
-      </div>
-
-    </div>
-
-  )
-
-}
-
-
-
-// ============ SETUP VIEW ============
 
 function SetupView({ configuredProviders, onProviderConfigured }: { 
 
@@ -4982,12 +3895,13 @@ function LoadingSpinner() {
 
 // ============ BUG BOUNTY PANEL ============
 
-function BugBountyPanel({ addNotification }: { addNotification: (type: string, message: string) => void }) {
+function BugBountyPanel({ projectId, addNotification }: { projectId?: string; addNotification: (type: string, message: string) => void }) {
   const [agents, setAgents] = useState<any[]>([]);
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [ethicalRules, setEthicalRules] = useState<any>(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<any>(null);
+  const [targetDomain, setTargetDomain] = useState('');
   const [urlInput, setUrlInput] = useState('');
   const [urlResult, setUrlResult] = useState<any>(null);
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -5006,9 +3920,9 @@ function BugBountyPanel({ addNotification }: { addNotification: (type: string, m
     setPipelineRunning(true);
     setPipelineResult(null);
     try {
-      const res = await fetch('/api/bug-bounty/pipeline', {
+      const res = await fetch('/api/bug-bounty/scan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_domain: 'example.com', in_scope: ['example.com'] }),
+        body: JSON.stringify({ target_domain: targetDomain || 'example.com', in_scope: ['example.com'], project_id: projectId }),
       });
       const data = await res.json();
       setPipelineResult(data);
@@ -5120,13 +4034,16 @@ function BugBountyPanel({ addNotification }: { addNotification: (type: string, m
         <div style={{ background: 'rgba(15, 15, 26, 0.95)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>🚀 Run Full Pipeline</h3>
           <p style={{ fontSize: '12px', color: '#888', marginBottom: '16px' }}>Run all 10 agents in sequence: URL Parser → Policy Enforcer → Scope Guardian → Passive Intel → Active Enum → Vuln Scanner → Validation Engine → Exploitation → Analysis → Report Generation</p>
+          <div style={{ marginBottom: '12px' }}>
+            <input type='text' value={targetDomain} onChange={e => setTargetDomain(e.target.value)} placeholder='Target domain (e.g. example.com)' style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #333', background: '#1a1a2e', color: '#fff', fontSize: '13px' }} />
+          </div>
           <button onClick={runPipeline} disabled={pipelineRunning} style={{
             width: '100%', padding: '14px', borderRadius: '10px', border: 'none',
             background: pipelineRunning ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #aa88ff, #00d4ff)',
             color: pipelineRunning ? '#666' : '#fff', fontWeight: '700', fontSize: '14px',
             cursor: pipelineRunning ? 'not-allowed' : 'pointer',
           }}>
-            {pipelineRunning ? '⏳ Running Pipeline...' : '🚀 Run Bug Bounty Pipeline'}
+            {pipelineRunning ? '⏳ Scanning...' : '🚀 Scan'}
           </button>
           {pipelineResult && (
             <div style={{ marginTop: '16px' }}>
@@ -5206,12 +4123,31 @@ function BugBountyPanel({ addNotification }: { addNotification: (type: string, m
                 </div>
               )}
 
-              {/* Summary JSON fallback */}
-              {(!pipelineResult.policy_decisions || pipelineResult.policy_decisions.length === 0) && (
-                <div style={{ padding: '12px', background: '#1a1a2e', borderRadius: '8px', fontSize: '12px', fontFamily: 'monospace', color: '#00ff88', whiteSpace: 'pre-wrap', maxHeight: '200px', overflow: 'auto' }}>
-                  {JSON.stringify(pipelineResult.summary || pipelineResult, null, 2)}
+              {/* Unique Findings Summary */}
+              {pipelineResult.unique_findings && pipelineResult.unique_findings.length > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#00d4ff', marginBottom: '8px' }}>
+                    🎯 {pipelineResult.findings_count || pipelineResult.unique_findings.length} Unique Finding{(pipelineResult.findings_count || pipelineResult.unique_findings.length) !== 1 ? 's' : ''}
+                  </div>
+                  {pipelineResult.unique_findings.map((f: any, i: number) => (
+                    <div key={i} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '12px', marginBottom: '8px', borderLeft: '3px solid ' + (f.severity === 'CRITICAL' ? '#ff4444' : f.severity === 'HIGH' ? '#ff8844' : f.severity === 'MEDIUM' ? '#ffaa00' : '#00d4ff') }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600' }}>{f.title}</span>
+                        <span style={{ fontSize: '10px', color: f.severity === 'CRITICAL' ? '#ff4444' : f.severity === 'HIGH' ? '#ff8844' : '#888', fontWeight: '600' }}>{f.severity}</span>
+                      </div>
+                      {f.target && <div style={{ fontSize: '10px', color: '#666' }}>📍 {f.target}</div>}
+                      {f.cvss && <div style={{ fontSize: '10px', color: '#666' }}>📊 {f.cvss}</div>}
+                    </div>
+                  ))}
                 </div>
               )}
+              {/* Raw pipeline JSON (collapsible) */}
+              <details style={{ marginTop: '8px' }}>
+                <summary style={{ fontSize: '11px', color: '#888', cursor: 'pointer', userSelect: 'none' }}>Raw pipeline JSON</summary>
+                <div style={{ marginTop: '8px', padding: '12px', background: '#1a1a2e', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace', color: '#00ff88', whiteSpace: 'pre-wrap', maxHeight: '300px', overflow: 'auto' }}>
+                  {JSON.stringify(pipelineResult.summary || pipelineResult, null, 2)}
+                </div>
+              </details>
             </div>
           )}
         </div>

@@ -483,6 +483,20 @@ rule Ransomware_Extension {
             'summary': {}
         }
         
+        # Auto-use tool integration for infrastructure mapping
+        try:
+            from ..agent_tool_integration import get_agent_tool_integration
+            _integration = get_agent_tool_integration()
+            for target in targets:
+                _tv = target.get('value', '')
+                if _tv:
+                    _r = await _integration.run_subdomain_enumeration(_tv)
+                    results['tool_subdomains'] = sum(len(r.findings) for r in _r)
+                    _r2 = await _integration.run_infrastructure_scan(_tv)
+                    results['tool_ports'] = sum(len(r.findings) for r in _r2)
+        except Exception:
+            pass
+
         for target in targets:
             target_type = target.get('type', 'ip')
             target_value = target.get('value', '')
@@ -1145,6 +1159,17 @@ class SupplyChainAgent(BaseAgent):
         # License summary
         result['license_summary'] = self._summarize_licenses(result['packages'])
         
+        # Auto-use tool integration for retire.js JS library scanning
+        try:
+            from ..agent_tool_integration import get_agent_tool_integration
+            _integration = get_agent_tool_integration()
+            _js_results = await _integration.run_js_analysis(target_path)
+            for _r in _js_results:
+                if _r.status == "completed":
+                    result['retirejs_findings'] = _r.findings[:20]
+        except Exception:
+            pass
+
         # Check for supply chain issues (A03)
         result['owasp_findings'] = self._check_supply_chain_security(result)
         

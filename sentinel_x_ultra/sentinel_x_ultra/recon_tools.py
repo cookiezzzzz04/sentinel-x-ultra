@@ -335,6 +335,7 @@ class ReconResult:
         return asdict(self)
 
 
+class BigBountyReconTool:
     """
     
     Performs reconnaissance using 58 different Google dorking techniques
@@ -353,8 +354,6 @@ class ReconResult:
         self.name = "bigbountyrecon"
     
     def is_available(self) -> bool:
-        # Check for .exe (C# .NET compiled binary) - works on Windows natively
-        # and can run via mono on Unix-like systems
         paths = [
         ]
         for path in paths:
@@ -363,12 +362,6 @@ class ReconResult:
         return False
     
     async def scan(self, target: str, dork_type: str = "all") -> "ReconResult":
-        """
-        
-        Args:
-            target: Target domain (e.g., "example.com")
-            dork_type: Type of dorking - "all", "admin", "sql", "geoserver"
-        """
         start_time = datetime.now()
         errors = []
         findings = []
@@ -393,15 +386,12 @@ class ReconResult:
             )
         
         try:
-            # Make script executable on Unix
             if platform.system() != "Windows":
                 os.chmod(tool_path, 0o755)
             
-            # On Windows, run .exe directly. On Unix with mono, use mono.
             if platform.system() == "Windows":
                 cmd = [tool_path, target]
             else:
-                # Try mono if available, otherwise try running directly
                 mono_path = shutil.which("mono")
                 if mono_path:
                     cmd = [mono_path, tool_path, target]
@@ -479,6 +469,9 @@ class SubFinderTool:
     
     def is_available(self) -> bool:
         """Check if subfinder is installed."""
+        path = _get_path_for_tool("subfinder")
+        if path and path != "subfinder" and os.path.exists(path):
+            return True
         try:
             result = subprocess.run(
                 ["subfinder", "--help"],
@@ -722,6 +715,9 @@ class WaybackUrlsTool:
     
     def is_available(self) -> bool:
         """Check if waybackurls is installed."""
+        path = _get_path_for_tool("waybackurls")
+        if path and path != "waybackurls" and os.path.exists(path):
+            return True
         try:
             result = subprocess.run(
                 ["waybackurls", "--help"],
@@ -820,6 +816,9 @@ class GauTool:
     
     def is_available(self) -> bool:
         """Check if gau is installed."""
+        path = _get_path_for_tool("gau")
+        if path and path != "gau" and os.path.exists(path):
+            return True
         try:
             result = subprocess.run(
                 ["gau", "--help"],
@@ -912,6 +911,11 @@ class HttpxTool:
     
     def is_available(self) -> bool:
         """Check if httpx is installed."""
+        # Check ~/.sentinelx/tools/ and GOPATH/bin first
+        path = _get_path_for_tool("httpx")
+        if path and path != "httpx" and os.path.exists(path):
+            return True
+        # Fall back to PATH check
         try:
             result = subprocess.run(
                 ["httpx", "--help"],
@@ -1031,6 +1035,9 @@ class DalfoxTool:
     
     def is_available(self) -> bool:
         """Check if dalfox is installed."""
+        path = _get_path_for_tool("dalfox")
+        if path and path != "dalfox" and os.path.exists(path):
+            return True
         try:
             result = subprocess.run(
                 ["dalfox", "help"],
@@ -1260,6 +1267,9 @@ class NucleiTool:
     
     def is_available(self) -> bool:
         """Check if nuclei is installed."""
+        path = _get_path_for_tool("nuclei")
+        if path and path != "nuclei" and os.path.exists(path):
+            return True
         try:
             result = subprocess.run(
                 ["nuclei", "--help"],

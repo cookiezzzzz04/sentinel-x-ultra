@@ -1,43 +1,41 @@
+# SENTINEL-X ULTRA — Bug Bounty & Security Analysis Framework
 
-## v0.5.0 - Phase 5 Features
+**This is the Python package directory.**
 
-### UI Improvements
-- **Analysis Panel** - SAST code analysis with pattern detection, now fully connected to project tabs
-- **Agents Panel** - Phase 3 AI agent controls with real-time output, now fully connected to project tabs
-- **Descriptions/Bios** - Added explanatory descriptions under all major panel titles (Input Sources, Threat Hunt, Supply Chain, Bug Bounty, OWASP)
+For full documentation — install guide, API reference, agent descriptions, and architecture — see the **[root README](../README.md)**.
 
-### Burp Suite Integration (Community Edition)
-- **Real-Time Proxy Mode** - Configure SENTINEL-X to route traffic through Burp Suite for live analysis
-- **JSON Export Import** - Upload Burp Suite JSON exports for analysis (Proxy > HTTP History > Export > JSON)
-- **Request Routing** - `/api/burp/proxy-request` endpoint forwards requests through upstream Burp proxy
-- **Analysis Endpoints**:
-  - `POST /api/burp/proxy-analyze` - Analyze request/response through Burp Suite
-  - `GET /api/burp/proxy-summary` - Get accumulated analysis summary
+---
 
-### Bug Fixes
-- Fixed `BurpProxyAnalyzer` cache to persist request data across API calls
-- Fixed Analysis/Agents panel rendering in project view tabs
-- Fixed syntax error in `get_owasp_context` function
+## Quick Start
 
-### Cache Management
-- Added `clear_all_burp_caches()` function to prevent memory leaks
-- Added `get_cached_proxy_count()` to monitor cache size
+```bash
+cd sentinel_x_ultra
+python -m uvicorn sentinel_x_ultra.server:app --host 127.0.0.1 --port 7860
+```
 
-## v0.4.0 - Phase 4 Features
+Then open **http://127.0.0.1:7860**.
 
-- Agent model selection per agent type
-- OWASP Top 10 knowledge integrated into agent system prompts
-- Bug bounty program context support
-- Agent memory persistence across runs
+---
 
-# Sentinel-X Ultra
+## Run Tests
 
-Security analysis platform with AI-powered agents.
+```bash
+cd sentinel_x_ultra
+python -m pytest sentinel_x_ultra/tests/test_bug_bounty.py -v
+```
 
-## Features
+---
 
-- Phase 3 AI Agents for security analysis
-- Phase 5 advanced threat hunting and operations
-- Bug Bounty methodology integration
-- Burp Suite Community Edition support
+## Package Contents
 
+| Path | Description |
+|------|-------------|
+| `server.py` | FastAPI web server |
+| `config.py` | Settings & configuration |
+| `bug_bounty/` | 10-agent bug bounty pipeline |
+| `agents/` | Phase 3-5 AI agents |
+| `analyzers/` | SAST & web analysis engines |
+| `engines/` | Knowledge graph, permission graph, business rules |
+| `tests/` | Test suite (22 tests) |
+
+For details on each module, see the [root README](../README.md).

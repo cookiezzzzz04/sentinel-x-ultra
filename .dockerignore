@@ -1,0 +1,34 @@
+# Dependencies
+**/node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local config & secrets
+.env
+.env.local
+*.secret
+settings.local.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Tool installations (local only)
+.sentinel/
+.tools/
+
+# Reports & data
+reports/
+*.log

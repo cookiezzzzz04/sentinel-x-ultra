@@ -210,9 +210,16 @@ class VulnerabilityScannerAgent:
 
     11-phase systematic scanner. Rewarded for accuracy, not volume.
     A missed finding is acceptable. A false positive is costly.
+
+    AI-POWERED (Phase 1 Upgrade):
+    - Uses LLMProvider for intelligent hypothesis generation
+    - AI-powered false positive analysis with contextual understanding
+    - Falls back to deterministic logic when LLM unavailable
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
+        self.llm_provider = llm_provider
+        self.memory = memory
         self.test_results: List[TestResult] = []
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -253,8 +260,8 @@ class VulnerabilityScannerAgent:
         result.attack_surface = surface
         phases_run.append("attack_surface_mapping")
 
-        # Phase 2: Hypothesis Generation
-        hypotheses = self._phase2_hypotheses(target, ttype, surface)
+        # Phase 2: Hypothesis Generation (AI-enhanced)
+        hypotheses = await self._phase2_hypotheses(target, ttype, surface)
         result.hypotheses = hypotheses
         if hypotheses:
             result.hypothesis = hypotheses[0].description
@@ -284,8 +291,8 @@ class VulnerabilityScannerAgent:
         result.responses = vuln_check.get("responses", [])
         phases_run.append("vulnerability_specific_testing")
 
-        # Phase 6: False Positive Elimination
-        alternatives = self._phase6_false_positives(ttype, target, vuln_check)
+        # Phase 6: False Positive Elimination (AI-enhanced)
+        alternatives = await self._phase6_false_positives(ttype, target, vuln_check, result)
         result.alternative_explanations = alternatives
         # Reject alternatives that are unlikely
         result.rejected_alternatives = []
@@ -308,8 +315,8 @@ class VulnerabilityScannerAgent:
         result.demonstrated_impact = demonstrated
         phases_run.append("impact_realism")
 
-        # Phase 10: Skepticism Review
-        skeptic_score = self._phase10_skepticism(alternatives, vuln_check, tier)
+        # Phase 10: Skepticism Review (AI-enhanced)
+        skeptic_score = self._phase10_skepticism(alternatives, vuln_check, tier, result.evidence)
         result.skeptic_score = skeptic_score
         phases_run.append("skepticism_review")
 
@@ -400,10 +407,37 @@ class VulnerabilityScannerAgent:
     # PHASE 2 — HYPOTHESIS GENERATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase2_hypotheses(self, target: str, ttype: str, surface: AttackSurfaceMap) -> List[Hypothesis]:
-        """Generate potential weakness hypotheses with likelihood estimates."""
+    async def _phase2_hypotheses(self, target: str, ttype: str, surface: AttackSurfaceMap) -> List[Hypothesis]:
+        """Generate potential weakness hypotheses with likelihood estimates.
+
+        AI-Powered: Uses LLM for intelligent hypothesis generation when available.
+        Generates context-aware hypotheses based on target, technology, and attack surface.
+        Falls back to template-based hypotheses.
+        """
         hypotheses = []
 
+        # Try AI-powered hypothesis generation
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                ai_hypotheses = await self.llm_provider.generate_hypotheses(
+                    target=target,
+                    technology_stack=[],
+                    endpoints=[ep.endpoint for ep in surface.endpoints],
+                    historical_findings=[],
+                )
+                if ai_hypotheses:
+                    for h in ai_hypotheses:
+                        hypotheses.append(Hypothesis(
+                            category=h.vulnerability_type or ttype,
+                            description=h.reasoning or h.vulnerability_type,
+                            likelihood=h.likelihood,
+                            affected_endpoint=target,
+                            test_approach=f"AI-generated: {'; '.join(h.suggested_payloads[:2])}" if h.suggested_payloads else f"Test {h.vulnerability_type} on {target}",
+                        ))
+            except Exception:
+                pass
+
+        # Fallback to template-based hypotheses
         hypothesis_templates = {
             "sql_injection": [
                 ("SQL Injection in parameter", "HIGH"),
@@ -464,13 +498,15 @@ class VulnerabilityScannerAgent:
         ])
 
         for desc, likelihood in templates:
-            hypotheses.append(Hypothesis(
-                category=ttype,
-                description=desc,
-                likelihood=likelihood,
-                affected_endpoint=target,
-                test_approach=f"Send {ttype} test payloads to {target}, compare responses to baseline",
-            ))
+            # Only add if AI didn't already generate one for this type
+            if not any(h.category == ttype for h in hypotheses):
+                hypotheses.append(Hypothesis(
+                    category=ttype,
+                    description=desc,
+                    likelihood=likelihood,
+                    affected_endpoint=target,
+                    test_approach=f"Send {ttype} test payloads to {target}, compare responses to baseline",
+                ))
 
         return hypotheses
 
@@ -784,12 +820,35 @@ class VulnerabilityScannerAgent:
     # PHASE 6 — FALSE POSITIVE ELIMINATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase6_false_positives(self, ttype: str, target: str, vuln_check: Dict) -> List[str]:
+    async def _phase6_false_positives(self, ttype: str, target: str, vuln_check: Dict, result: TestResult) -> List[str]:
         """
         Generate at least five alternative explanations.
         Attempt to invalidate the finding.
+
+        AI-Powered: Uses LLM for intelligent false positive analysis when available.
+        Generates context-aware alternative explanations.
+        Falls back to template-based alternatives.
         """
         alternatives = []
+
+        # Try AI-powered false positive analysis
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                fp_analysis = await self.llm_provider.analyze_false_positive(
+                    finding_title=result.hypothesis or f"{ttype} on {target}",
+                    vuln_type=ttype,
+                    target=target,
+                    evidence={"verified": vuln_check.get("verified", []), "missing": vuln_check.get("missing", [])},
+                    steps=[d.observed_behavior for d in result.differentials],
+                )
+                if fp_analysis and fp_analysis.get("alternative_explanations"):
+                    alternatives = fp_analysis["alternative_explanations"][:8]
+                    # Store AI FP likelihood for Phase 10 (Skepticism Review) to use
+                    result.evidence["ai_fp_likelihood"] = fp_analysis.get("false_positive_likelihood", 0)
+            except Exception:
+                pass
+
+        # Fallback to template-based alternatives
 
         # Built-in alternative explanations
         generic_alternatives = [
@@ -926,7 +985,7 @@ class VulnerabilityScannerAgent:
     # PHASE 10 — SKEPTICISM REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase10_skepticism(self, alternatives: List[str], vuln_check: Dict, tier: str) -> int:
+    def _phase10_skepticism(self, alternatives: List[str], vuln_check: Dict, tier: str, evidence: Dict = None) -> int:
         """
         skeptic_score 0-100.
 
@@ -935,8 +994,21 @@ class VulnerabilityScannerAgent:
         - Were alternative explanations tested? (rejected)
         - Were assumptions removed? (verified vs missing)
         - Was reproducibility verified? (evidence tier)
+
+        AI-Enhanced: Uses AI FP likelihood when available from Phase 6 analysis.
         """
         score = 0
+
+        # AI FP likelihood contribution (stored by Phase 6 AI analysis)
+        if evidence and evidence.get("ai_fp_likelihood"):
+            ai_fp = int(evidence["ai_fp_likelihood"])
+            # Higher AI false positive likelihood = more skepticism
+            if ai_fp >= 70:
+                score += 30
+            elif ai_fp >= 50:
+                score += 20
+            elif ai_fp >= 30:
+                score += 10
 
         # Challenged: alternatives generated
         if len(alternatives) >= 5:

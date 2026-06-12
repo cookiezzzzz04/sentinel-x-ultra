@@ -17,6 +17,7 @@ All values are PASSED THROUGH as-is from Agent 8 (PoC), Agent 9 (Analysis),
 and validated finding metadata.
 """
 
+import json
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -174,8 +175,10 @@ class ReportGenerationAgent:
     or policy_status != ALLOW → REVIEW with no report generated.
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
         self.reports: List[VulnerabilityReport] = []
+        self.llm_provider = llm_provider
+        self.memory = memory
 
     async def generate_report(
         self,
@@ -236,8 +239,8 @@ class ReportGenerationAgent:
         #
         # If conflict exists → REVIEW (do not resolve)
 
-        # Detect conflicts between sources
-        conflicts = self._detect_conflicts(finding, analysis, poc)
+        # Detect conflicts between sources (Phase 5 Deep: AI-powered) 
+        conflicts = await self._detect_conflicts(finding, analysis, poc)
         if conflicts:
             report = VulnerabilityReport(
                 title=finding.get("title", UNKNOWN),
@@ -427,10 +430,13 @@ class ReportGenerationAgent:
     # CONFLICT DETECTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _detect_conflicts(self, finding: Dict[str, Any],
-                          analysis: Dict[str, Any],
-                          poc: Dict[str, Any]) -> List[str]:
-        """Detect conflicts between sources.
+    async def _detect_conflicts(self, finding: Dict[str, Any],
+                                analysis: Dict[str, Any],
+                                poc: Dict[str, Any]) -> List[str]:
+        """Detect conflicts between sources using deterministic and AI-powered analysis.
+
+        Phase 5 Deep: Uses LLM for semantic conflict detection — catching contradictions
+        that keyword matching would miss.
 
         Truth source priority:
         1. PoC Evidence (Agent 8) → highest authority
@@ -441,7 +447,49 @@ class ReportGenerationAgent:
         """
         conflicts = []
 
-        # Check for contradictory severity ratings
+        # Phase 5 Deep: Use LLM for semantic conflict detection
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                # Build a compact representation of all sources
+                finding_summary = json.dumps({
+                    "title": finding.get("title", ""),
+                    "type": finding.get("type", ""),
+                    "severity": finding.get("severity", ""),
+                    "target": finding.get("target", ""),
+                    "endpoint": finding.get("endpoint", ""),
+                    "impact": (finding.get("impact", "") or "")[:200],
+                    "description": (finding.get("description", "") or "")[:200],
+                })[:500]
+                analysis_summary = json.dumps(analysis)[:500] if analysis else "{}"
+                poc_summary = json.dumps({
+                    "target": poc.get("target", ""),
+                    "cvss": poc.get("cvss", ""),
+                    "severity": poc.get("severity", ""),
+                    "impact_demonstration": (poc.get("impact_demonstration", "") or "")[:200],
+                })[:500]
+
+                prompt = (
+                    f"Detect contradictions between these three information sources.\n\n"
+                    f"Source 1 (Finding metadata): {finding_summary}\n\n"
+                    f"Source 2 (Analysis - Agent 9): {analysis_summary}\n\n"
+                    f"Source 3 (PoC - Agent 8): {poc_summary}\n\n"
+                    f"Return ONLY a JSON array of strings describing each contradiction. "
+                    f"Empty array [] if none. Look for: severity, target, impact, "
+                    f"vulnerability type, or description contradictions."
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.1)
+                if isinstance(llm_result, list):
+                    for c in llm_result:
+                        if isinstance(c, str) and c not in conflicts:
+                            conflicts.append(f"AI DETECTED: {c}")
+                elif isinstance(llm_result, dict):
+                    for c in llm_result.get("contradictions", []):
+                        if isinstance(c, str) and c not in conflicts:
+                            conflicts.append(f"AI DETECTED: {c}")
+            except Exception:
+                pass
+
+        # Also run deterministic checks
         finding_severity = str(finding.get("severity", "")).lower()
         poc_severity = str(poc.get("cvss", poc.get("severity", ""))).lower()
         analysis_severity = str(analysis.get("severity", "")).lower() if analysis else ""
@@ -451,7 +499,6 @@ class ReportGenerationAgent:
                 f"Severity conflict: finding={finding_severity}, analysis={analysis_severity}, poc={poc_severity}"
             )
 
-        # Check for contradictory targets
         finding_target = str(finding.get("target", finding.get("endpoint", ""))).lower()
         poc_target = str(poc.get("target", "")).lower()
         targets = [t for t in [finding_target, poc_target] if t]
@@ -460,27 +507,7 @@ class ReportGenerationAgent:
                 f"Target conflict: finding={finding_target} vs poc={poc_target}"
             )
 
-        # Check for contradictory impact/description
-        # Combine impact, description, poc, and analysis for full coverage
-        finding_impact = str(finding.get("impact", "")).lower()
-        finding_desc = str(finding.get("description", "")).lower()
-        poc_impact = str(poc.get("impact_demonstration", "")).lower()
-        analysis_impact = str(analysis.get("business_impact", "")).lower() if analysis else ""
-
-        # Combine ALL text sources for contradiction detection
-        combined_impact_text = " ".join([finding_impact, finding_desc, poc_impact, analysis_impact])
-
-        # Check for explicit contradictions (one says exposed, other says no exposure)
-        exposure_positive = any(kw in combined_impact_text
-                               for kw in ["data exposed", "unauthorized access"])
-        exposure_negative = any(kw in combined_impact_text
-                               for kw in ["not vulnerable", "no exposure", "false positive", "no impact"])
-        if exposure_positive and exposure_negative:
-            conflicts.append(
-                f"Impact contradiction: evidence suggests both exposure and no exposure"
-            )
-
-        # Check for contradictory classification vs description
+        # Classification vs description contradictions
         desc = (finding.get("description", "") + " " + poc.get("impact_demonstration", "")).lower()
         vuln_type = str(finding.get("type", "")).lower()
         if vuln_type == "xss" and "sql" in desc:

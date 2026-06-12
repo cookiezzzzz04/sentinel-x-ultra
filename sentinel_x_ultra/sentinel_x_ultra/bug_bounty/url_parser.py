@@ -246,10 +246,17 @@ class URLParserAgent:
     14-phase intelligence pipeline. Incorrect intelligence may cause
     out-of-scope testing, invalid findings, or wasted effort.
     When uncertain, return UNKNOWN. Never guess.
+
+    AI-POWERED (Phase 1 Upgrade):
+    - Uses LLMProvider for advanced program intelligence analysis
+    - Enhances regex-based extraction with AI reasoning
+    - Falls back to deterministic extraction when LLM unavailable
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
         self.client = httpx.AsyncClient(timeout=30, follow_redirects=True)
+        self.llm_provider = llm_provider
+        self.memory = memory
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API
@@ -282,8 +289,8 @@ class URLParserAgent:
             pi = self._phase3_scope(pi)
             phases_run.append("scope_analysis")
 
-            # Phase 4: Policy Intelligence
-            pi = self._phase4_policy(pi)
+            # Phase 4: Policy Intelligence (AI-enhanced)
+            pi = await self._phase4_policy(pi)
             phases_run.append("policy_intelligence")
 
             # Phase 5: Testing Restriction Intelligence
@@ -302,8 +309,8 @@ class URLParserAgent:
             pi = self._phase8_maturity(pi)
             phases_run.append("maturity_analysis")
 
-            # Phase 9: Contradiction Detection
-            pi = self._phase9_contradictions(pi)
+            # Phase 9: Contradiction Detection (AI-enhanced when available)
+            pi = await self._phase9_contradictions(pi)
             phases_run.append("contradiction_detection")
 
             # Phase 10: Uncertainty Analysis
@@ -610,13 +617,43 @@ class URLParserAgent:
     # PHASE 4 — POLICY INTELLIGENCE
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase4_policy(self, pi: ProgramIntelligence) -> ProgramIntelligence:
+    async def _phase4_policy(self, pi: ProgramIntelligence) -> ProgramIntelligence:
         """
         Extract accepted and rejected vulnerability classes.
         Only include classes supported by evidence.
+
+        AI-Powered: Uses LLM for advanced policy classification when available.
+        Falls back to regex pattern matching.
         """
         accepted: List[VulnClass] = []
         rejected: List[VulnClass] = []
+
+        # Try AI-powered policy analysis first
+        if self.llm_provider and self.llm_provider.is_available and pi.raw_content:
+            try:
+                ai_analysis = await self.llm_provider.analyze_program(pi.url, pi.raw_content)
+                ai_accepted = ai_analysis.get("accepted_vulnerability_types", [])
+                ai_rejected = ai_analysis.get("rejected_vulnerability_types", [])
+                for vt in ai_accepted:
+                    if isinstance(vt, str):
+                        accepted.append(VulnClass(
+                            class_name=vt,
+                            confidence=70.0,
+                            evidence=[f"AI-classified from program content using {self.llm_provider.provider_name}"],
+                        ))
+                for vt in ai_rejected:
+                    if isinstance(vt, str):
+                        rejected.append(VulnClass(
+                            class_name=vt,
+                            confidence=70.0,
+                            evidence=[f"AI-classified from program content using {self.llm_provider.provider_name}"],
+                        ))
+                if accepted or rejected:
+                    pi.phases_run.append("ai_policy_analysis")
+            except Exception:
+                pass
+
+        # Fallback to regex extraction
         html_lower = (pi.raw_content or "").lower()
 
         for vuln in KNOWN_VULN_CLASSES:
@@ -637,9 +674,7 @@ class URLParserAgent:
                         class_name=vuln,
                         confidence=60.0,
                         evidence=[f"Found in program content: ...{context[:80]}..."],
-                    ))
-
-        # Add common rejected classes that are typically out of scope
+                    ))            # Add common rejected classes that are typically out of scope (if not already covered by LLM)
         rej_classes = REJECTED_VULN_CLASSES
         for rclass in rej_classes:
             if rclass not in [v.class_name for v in rejected]:
@@ -856,13 +891,36 @@ class URLParserAgent:
     # PHASE 9 — CONTRADICTION DETECTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase9_contradictions(self, pi: ProgramIntelligence) -> ProgramIntelligence:
+    async def _phase9_contradictions(self, pi: ProgramIntelligence) -> ProgramIntelligence:
         """
         Search for conflicts: asset in/out of scope, policy conflicts,
         reward conflicts, restriction conflicts.
         Do not silently resolve contradictions — report them.
+
+        AI-Powered: Uses LLM for advanced contradiction detection.
+        Falls back to pattern matching.
         """
         contradictions: List[Contradiction] = []
+
+        # Try AI-powered contradiction detection
+        if self.llm_provider and self.llm_provider.is_available and pi.raw_content:
+            try:
+                ai_analysis = await self.llm_provider.analyze_program(pi.url, pi.raw_content)
+                ai_contradictions = ai_analysis.get("contradictions", [])
+                for c in ai_contradictions:
+                    if isinstance(c, dict):
+                        contradictions.append(Contradiction(
+                            contradiction_type=c.get("type", "POLICY_CONFLICT"),
+                            description=c.get("description", "AI-detected contradiction"),
+                            affected_fields=c.get("affected_fields", []),
+                            severity=c.get("severity", "medium"),
+                            confidence=float(c.get("confidence", 50)),
+                        ))
+                if contradictions:
+                    pi.phases_run.append("ai_contradiction_detection")
+            except Exception:
+                pass
+
         html_lower = (pi.raw_content or "").lower()
 
         # Check for assets listed both in and out of scope

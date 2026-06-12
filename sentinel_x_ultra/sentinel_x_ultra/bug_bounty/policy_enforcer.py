@@ -12,6 +12,7 @@ A false approval is more harmful than a false review.
 """
 
 import asyncio
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -183,12 +184,14 @@ class PolicyEnforcerAgent:
      12. Hallucination Prevention
     """
 
-    def __init__(self, webhook_manager: Optional[WebhookManager] = None):
+    def __init__(self, webhook_manager: Optional[WebhookManager] = None, llm_provider=None, memory=None):
         self.accepted_types: List[str] = list(ACCEPTED_VULN_TYPES)
         self.rejected_types: List[str] = list(REJECTED_VULN_TYPES)
         self.custom_rules: List[PolicyRule] = []
         self.program_intel: Optional[ProgramIntelligence] = None
         self.webhook_manager = webhook_manager
+        self.llm_provider = llm_provider
+        self.memory = memory
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API (Backward Compatible)
@@ -218,13 +221,13 @@ class PolicyEnforcerAgent:
                 notes="Rejected per program policy",
             ))
 
-    def check_finding(self, finding: Dict[str, Any]) -> PolicyEnforcementResult:
+    async def check_finding(self, finding: Dict[str, Any]) -> PolicyEnforcementResult:
         """Check if a finding passes policy enforcement (legacy wrapper).
 
         Internally runs the full 12-phase pipeline and maps the result
         back to the legacy PolicyEnforcementResult format.
         """
-        output = self._run_full_pipeline(finding)
+        output = await self._run_full_pipeline(finding)
         title = finding.get("title", "Unknown Finding")
         vuln_type = finding.get("type", "").lower().replace(" ", "_")
 
@@ -243,18 +246,21 @@ class PolicyEnforcerAgent:
             detailed_output=self._output_to_dict(output),
         )
 
-    def batch_check(self, findings: List[Dict[str, Any]]) -> List[PolicyEnforcementResult]:
+    async def batch_check(self, findings: List[Dict[str, Any]]) -> List[PolicyEnforcementResult]:
         """Check multiple findings against policy."""
-        return [self.check_finding(f) for f in findings]
+        results = []
+        for f in findings:
+            results.append(await self.check_finding(f))
+        return results
 
-    def filter_allowed(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def filter_allowed(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Return only findings that pass policy (ALLOW only)."""
-        results = self.batch_check(findings)
+        results = await self.batch_check(findings)
         return [f for f, r in zip(findings, results) if r.decision == PolicyDecision.ALLOW]
 
-    def get_rejected_report(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def get_rejected_report(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Return report of why findings were rejected or sent to review."""
-        results = self.batch_check(findings)
+        results = await self.batch_check(findings)
         return [
             {
                 "title": r.finding_title,
@@ -269,26 +275,24 @@ class PolicyEnforcerAgent:
             for f, r in zip(findings, results) if r.decision != PolicyDecision.ALLOW
         ]
 
-    def evaluate(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
+    async def evaluate(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
         """Run the full 12-phase policy decision pipeline.
 
-        This is the primary API for the new implementation.
+        Phase 5 Deep: Now async with LLM-powered phases.
         Returns the complete structured decision output.
         Fires a webhook with the decision result if configured.
         """
-        output = self._run_full_pipeline(finding)
+        output = await self._run_full_pipeline(finding)
 
         # Fire webhook for every policy decision (non-blocking)
         if self.webhook_manager:
             try:
-                # Use asyncio.create_task or ensure_future to fire without blocking
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     asyncio.ensure_future(self._fire_decision_webhook(finding, output))
                 else:
                     loop.run_until_complete(self._fire_decision_webhook(finding, output))
-            except (RuntimeError, Exception) as e:
-                # If no event loop is available, skip webhook silently
+            except (RuntimeError, Exception):
                 pass
 
         return output
@@ -317,8 +321,11 @@ class PolicyEnforcerAgent:
     # FULL 12-PHASE PIPELINE
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _run_full_pipeline(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
-        """Execute all 12 phases in order. Short-circuits on REJECT."""
+    async def _run_full_pipeline(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
+        """Execute all 12 phases in order. Short-circuits on REJECT.
+
+        Phase 5 Deep: Phases 7, 8, 10, 11 now use async LLM reasoning.
+        """
         output = PolicyDecisionOutput()
         phases_run = []
 
@@ -375,21 +382,20 @@ class PolicyEnforcerAgent:
         if not impact_ok:
             output.uncertainties.append("Impact not demonstrated — only hypothetical scenarios presented")
 
-        # Phase 7: Duplicate Risk Analysis
-        dup_result = self._phase7_duplicate(finding)
+        # Phase 7: Duplicate Risk Analysis (async — Phase 5 Deep LLM)
+        dup_result = await self._phase7_duplicate(finding)
         phases_run.append("duplicate_risk")
         output.duplicate_risk = dup_result.value
         if dup_result in (DuplicateRisk.HIGH, DuplicateRisk.MEDIUM):
             output.uncertainties.append(f"Duplicate risk is {dup_result.value} — requires manual review")
 
-        # Phase 8: Policy Contradiction Analysis
-        contradictions = self._phase8_contradictions(finding, output)
+        # Phase 8: Policy Contradiction Analysis (async — Phase 5 Deep LLM)
+        contradictions = await self._phase8_contradictions(finding, output)
         phases_run.append("policy_contradictions")
         for c in contradictions:
             output.policy_violations.append(c)
         if contradictions:
             output.reasoning.append(f"Found {len(contradictions)} policy contradiction(s) — contradictions cannot be resolved through assumptions, requiring REVIEW")
-            # Per prompt: "If contradictions exist: REVIEW. Do not resolve conflicts through assumptions."
             output.uncertainties.append(f"Policy contradictions found ({len(contradictions)}) — cannot be resolved without manual review")
 
         # Phase 9: Program Compliance Score
@@ -400,13 +406,13 @@ class PolicyEnforcerAgent:
         phases_run.append("compliance_score")
         output.program_compliance_score = score
 
-        # Phase 10: Triager Simulation
-        triager = self._phase10_triager(finding, output)
+        # Phase 10: Triager Simulation (async — Phase 5 Deep LLM)
+        triager = await self._phase10_triager(finding, output)
         phases_run.append("triager_simulation")
         output.triager_assessment = triager
 
-        # Phase 11: Adverse Review
-        rejection_args = self._phase11_adverse(finding, output)
+        # Phase 11: Adverse Review (async — Phase 5 Deep LLM)
+        rejection_args = await self._phase11_adverse(finding, output)
         phases_run.append("adverse_review")
         output.rejection_arguments = rejection_args
 
@@ -641,22 +647,24 @@ class PolicyEnforcerAgent:
     # PHASE 7 — DUPLICATE RISK ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase7_duplicate(self, finding: Dict[str, Any]) -> DuplicateRisk:
-        """Assess duplicate risk based on known patterns."""
-        # Check for known duplicate indicators
+    async def _phase7_duplicate(self, finding: Dict[str, Any]) -> DuplicateRisk:
+        """Assess duplicate risk using AI reasoning + pattern checks.
+
+        Phase 5 Deep: Uses LLM for semantic duplicate analysis against
+        program context and known patterns.
+        """
         description = finding.get("description", "").lower()
         vuln_type = finding.get("type", "").lower()
 
+        # First, check deterministic patterns (fast reject)
         common_findings = [
             "missing security headers", "version disclosure",
             "server banner", "x-powered-by", "x-frame-options",
         ]
-
         for common in common_findings:
             if common in description or common in vuln_type:
                 return DuplicateRisk.HIGH
 
-        # Check for well-known issue indicators
         well_known = [
             "self-xss", "clickjacking without impact",
             "email enumeration", "user enumeration",
@@ -665,15 +673,40 @@ class PolicyEnforcerAgent:
             if wk in vuln_type:
                 return DuplicateRisk.MEDIUM
 
+        # Phase 5 Deep: Use LLM for semantic duplicate assessment
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"Assess the duplicate risk for this bug bounty finding.\n\n"
+                    f"Finding Title: {finding.get('title', 'Unknown')}\n"
+                    f"Vulnerability Type: {vuln_type}\n"
+                    f"Description: {description[:500]}\n"
+                    f"Target: {finding.get('target', '')}\n\n"
+                    f"Return ONLY one word: LOW, MEDIUM, or HIGH.\n"
+                    f"Consider: Is this a well-known/common issue? Is it unique to this target? "
+                    f"Would multiple researchers likely find the same issue?"
+                )
+                response = await self.llm_provider.reason(prompt, temperature=0.1)
+                response_upper = response.strip().upper()
+                if "HIGH" in response_upper:
+                    return DuplicateRisk.HIGH
+                elif "MEDIUM" in response_upper:
+                    return DuplicateRisk.MEDIUM
+            except Exception:
+                pass
+
         return DuplicateRisk.LOW
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 8 — POLICY CONTRADICTION ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase8_contradictions(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+    async def _phase8_contradictions(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
         """Identify scope, restriction, policy, or reward conflicts.
         Per prompt: "If contradictions exist: REVIEW. Do not resolve conflicts through assumptions."
+
+        Phase 5 Deep: Uses LLM for deeper semantic contradiction detection
+        beyond simple list membership checks.
         """
         contradictions: List[str] = []
         vuln_type = finding.get("type", "").lower().replace(" ", "_")
@@ -701,6 +734,33 @@ class PolicyEnforcerAgent:
                         output.policy_citations.append(
                             f"CONTRADICTION: '{inc}' is in both in-scope and out-of-scope lists"
                         )
+
+        # Phase 5 Deep: Use LLM for semantic contradiction detection
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"Analyze this bug bounty finding for policy contradictions.\n\n"
+                    f"Finding: {finding.get('title', 'Unknown')} ({vuln_type})\n"
+                    f"Target: {finding.get('target', '')}\n"
+                    f"Description: {finding.get('description', '')[:500]}\n"
+                    f"Evidence: {json.dumps(finding.get('evidence', {}))[:300]}\n\n"
+                    f"Return ONLY a JSON array of strings describing each contradiction found. "
+                    f"If none, return empty array [].\n"
+                    f"Look for: scope vs policy contradictions, evidence vs impact contradictions, "
+                    f"testing method vs policy contradictions."
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.1)
+                if isinstance(llm_result, list):
+                    for c in llm_result:
+                        if isinstance(c, str) and c not in contradictions:
+                            contradictions.append(c)
+                            output.policy_citations.append(f"AI DISCOVERED CONTRADICTION: {c}")
+                elif isinstance(llm_result, dict):
+                    for c in llm_result.get("contradictions", []):
+                        if isinstance(c, str) and c not in contradictions:
+                            contradictions.append(c)
+            except Exception:
+                pass
 
         return contradictions
 
@@ -761,12 +821,49 @@ class PolicyEnforcerAgent:
     # PHASE 10 — TRIAGER SIMULATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase10_triager(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
-        """Simulate an experienced bug bounty triager."""
+    async def _phase10_triager(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+        """Simulate an experienced bug bounty triager using LLM reasoning.
+
+        Phase 5 Deep: Uses LLM to simulate a real human triager's perspective,
+        providing nuanced assessment beyond compliance score thresholds.
+        """
         assessments: List[str] = []
         vuln_type = finding.get("type", "").lower()
-        description = finding.get("description", "").lower()
 
+        # Phase 5 Deep: Use LLM for realistic triager simulation
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"You are an experienced bug bounty triager. Assess this finding.\n\n"
+                    f"Title: {finding.get('title', 'Unknown')}\n"
+                    f"Type: {vuln_type}\n"
+                    f"Description: {finding.get('description', '')[:500]}\n"
+                    f"Compliance Score: {output.program_compliance_score}\n"
+                    f"Evidence Tier: {output.evidence_tier}\n"
+                    f"Impact Status: {output.impact_status}\n"
+                    f"Scope Status: {output.scope_status}\n"
+                    f"Duplicate Risk: {output.duplicate_risk}\n\n"
+                    f"Return ONLY a JSON array of strings with your assessment points.\n"
+                    f"Consider: Would you accept this? Would you mark it informative? "
+                    f"Is there enough evidence? What's the weakest part of this finding?"
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.3)
+                if isinstance(llm_result, list):
+                    for a in llm_result:
+                        if isinstance(a, str) and a not in assessments:
+                            assessments.append(a)
+                    if assessments:
+                        return assessments
+                elif isinstance(llm_result, dict):
+                    for a in llm_result.get("assessments", []):
+                        if isinstance(a, str) and a not in assessments:
+                            assessments.append(a)
+                    if assessments:
+                        return assessments
+            except Exception:
+                pass
+
+        # Fallback: deterministic assessment
         # 1. Would this likely be accepted?
         if output.program_compliance_score >= 80:
             assessments.append("Likely accepted — strong compliance with program policy")
@@ -789,13 +886,7 @@ class PolicyEnforcerAgent:
         if output.duplicate_risk in (DuplicateRisk.HIGH.value, DuplicateRisk.MEDIUM.value):
             assessments.append(f"Duplicate risk is {output.duplicate_risk} — likely marked as duplicate")
 
-        # 5. Would this likely be rejected for insufficient evidence?
-        if output.evidence_tier in (EvidenceTier.TIER_0.value, EvidenceTier.TIER_1.value):
-            assessments.append("High rejection risk — insufficient evidence")
-        elif output.evidence_tier == EvidenceTier.TIER_2.value and output.impact_status == "NOT_DEMONSTRATED":
-            assessments.append("Rejection risk — evidence exists but impact not demonstrated")
-
-        # 6. Strongest argument against acceptance
+        # 5. Strongest argument against acceptance
         weakest_points = []
         if output.scope_status != ScopeStatus.IN_SCOPE.value:
             weakest_points.append("scope not confirmed as in-scope")
@@ -817,10 +908,47 @@ class PolicyEnforcerAgent:
     # PHASE 11 — ADVERSE REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase11_adverse(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
-        """Actively attempt to reject the finding. Generate rejection arguments."""
+    async def _phase11_adverse(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+        """Actively attempt to reject the finding using LLM-powered adversarial review.
+
+        Phase 5 Deep: Uses LLM to generate sophisticated rejection arguments
+        that a skeptical triager would raise.
+        """
         rejection_args: List[str] = []
 
+        # Phase 5 Deep: Use LLM for adversarial rejection analysis
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"You are a SKEPTICAL bug bounty triager. Your job is to find reasons to REJECT this finding.\n\n"
+                    f"Finding: {finding.get('title', 'Unknown')}\n"
+                    f"Type: {finding.get('type', 'unknown')}\n"
+                    f"Description: {finding.get('description', '')[:500]}\n"
+                    f"Target: {finding.get('target', '')}\n"
+                    f"Scope Status: {output.scope_status}\n"
+                    f"Vuln Eligibility: {output.vulnerability_eligibility}\n"
+                    f"Evidence Tier: {output.evidence_tier}\n"
+                    f"Impact Status: {output.impact_status}\n\n"
+                    f"Generate 3-5 strong, specific arguments for why this finding should be REJECTED.\n"
+                    f"Return ONLY a JSON array of strings."
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.4)
+                if isinstance(llm_result, list):
+                    for a in llm_result:
+                        if isinstance(a, str) and a not in rejection_args:
+                            rejection_args.append(a)
+                    if rejection_args:
+                        return rejection_args
+                elif isinstance(llm_result, dict):
+                    for a in llm_result.get("arguments", llm_result.get("rejection_args", [])):
+                        if isinstance(a, str) and a not in rejection_args:
+                            rejection_args.append(a)
+                    if rejection_args:
+                        return rejection_args
+            except Exception:
+                pass
+
+        # Fallback: deterministic adverse review
         # Policy violations
         if output.scope_status == ScopeStatus.UNCLEAR.value:
             rejection_args.append("Scope cannot be confirmed — asset may be out of scope")

@@ -276,6 +276,11 @@ class PassiveIntelligenceAgent:
     Never makes direct requests to target infrastructure.
     Every discovery requires source + confidence + evidence + evidence_chain.
 
+    AI-POWERED (Phase 1 Upgrade):
+    - Uses LLMProvider for advanced OSINT analysis
+    - AI-powered attack surface modeling with contextual understanding
+    - LLM-driven analyst challenge process
+
     20-Phase Pipeline:
       1.  Asset Discovery (builds evidence chains)
       2.  Historical Intelligence
@@ -285,21 +290,24 @@ class PassiveIntelligenceAgent:
       6.  Public Documentation Intelligence
       7.  Cloud Intelligence
       8.  Exposure Intelligence
-      9.  Attack Surface Modeling (0-100 priority scoring)
+      9.  Attack Surface Modeling (0-100 priority scoring) — AI-enhanced
      10.  Source Reliability Analysis
      11.  Confidence Analysis
      12.  Contradiction Detection
      13.  Hallucination Prevention
-     14.  Downstream Guidance & Collection Plan
+     14.  Downstream Guidance & Collection Plan — AI-enhanced
      15.  Source Correlation
      16.  Ownership Verification
      17.  Intelligence Gap Analysis
      18.  Cross-Source Correlation
      19.  Intelligence Quality Score
-     20.  Analyst Challenge Process
+     20.  Analyst Challenge Process — AI-enhanced
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None, data_sources=None):
+        self.llm_provider = llm_provider
+        self.memory = memory
+        self.data_sources = data_sources
         self.approved_sources = [
             "certificate_transparency",
             "wayback_machine",
@@ -312,6 +320,11 @@ class PassiveIntelligenceAgent:
             "public_security_disclosures",
             "public_app_stores",
             "public_package_registries",
+            # Phase 4: External data sources via API
+            "securitytrails",
+            "censys",
+            "shodan",
+            "urlscan",
         ]
         # CT log cache: domain -> (timestamp, [(subdomain, confidence, evidence)])
         self._ct_cache: Dict[str, Tuple[datetime, List[Tuple[str, float, List[str]]]]] = {}
@@ -379,8 +392,8 @@ class PassiveIntelligenceAgent:
         self._phase8_exposure(domain, result)
         phases_run.append("exposure_intelligence")
 
-        # Phase 9: Attack Surface Modeling (0-100 priority scoring)
-        self._phase9_attack_surface(result)
+        # Phase 9: Attack Surface Modeling (0-100 priority scoring) — AI-enhanced
+        await self._phase9_attack_surface(result)
         phases_run.append("attack_surface_modeling")
 
         # Phase 10: Source Reliability Analysis
@@ -399,8 +412,8 @@ class PassiveIntelligenceAgent:
         self._phase13_hallucination(result)
         phases_run.append("hallucination_prevention")
 
-        # Phase 14: Downstream Guidance & Collection Plan
-        self._phase14_downstream(result)
+        # Phase 14: Downstream Guidance & Collection Plan — AI-enhanced
+        await self._phase14_downstream(result)
         phases_run.append("downstream_guidance")
 
         # Phase 15: Source Correlation
@@ -423,8 +436,8 @@ class PassiveIntelligenceAgent:
         self._phase19_quality_score(result)
         phases_run.append("intelligence_quality_score")
 
-        # Phase 20: Analyst Challenge Process
-        self._phase20_challenge(result)
+        # Phase 20: Analyst Challenge Process — AI-enhanced
+        await self._phase20_challenge(result)
         phases_run.append("analyst_challenge")
 
         # Record phases run
@@ -444,9 +457,108 @@ class PassiveIntelligenceAgent:
         - Never generate assets from wordlists
         - Only output observed assets
         - Every asset requires source + confidence + evidence + evidence_chain
+
+        Phase 4: Also queries external data sources (Shodan, Censys, SecurityTrails, URLScan)
+        when API keys are configured. Results are merged into the asset discovery.
         """
         result.sources_checked.append("crt.sh")
         result.sources_checked.append("certificate_transparency")
+
+        # Phase 4: Query external data sources
+        if self.data_sources:
+            try:
+                ext_results = await self.data_sources.search_domain(domain)
+                for source_name, ds_result in ext_results.items():
+                    if ds_result.success:
+                        result.sources_checked.append(source_name)
+                        # SecurityTrails returns subdomain lists directly
+                        if source_name == "securitytrails" and "subdomains" in ds_result.data:
+                            subdomain_list = ds_result.data.get("subdomains", [])
+                            endpoint = ds_result.data.get("endpoint", domain)
+                            for sub in subdomain_list:
+                                full = f"{sub}.{endpoint}" if not sub.startswith(endpoint) else sub
+                                if full not in result.subdomains:
+                                    result.subdomains.append(full)
+                                    result.assets.append({
+                                        "asset": full,
+                                        "asset_type": "SUBDOMAIN",
+                                        "source": "securitytrails",
+                                        "confidence": 0.85,
+                                        "evidence": [f"Discovered via SecurityTrails API"],
+                                        "evidence_chain": [
+                                            {"source": "securitytrails", "observation": f"API returned subdomain: {sub}", "confidence": 0.85}
+                                        ],
+                                        "first_seen": "",
+                                        "last_seen": datetime.now(timezone.utc).isoformat(),
+                                        "priority": "MEDIUM_VALUE",
+                                        "priority_score": 60,
+                                        "priority_reasoning": [f"Discovered via SecurityTrails"],
+                                        "ownership": "LIKELY_OWNER",
+                                    })
+                        # Censys returns certificate data with SAN names
+                        if source_name == "censys":
+                            certs = ds_result.data.get("result", {}).get("hits", [])
+                            for cert in certs:
+                                names = cert.get("parsed", {}).get("names", [])
+                                for name in names:
+                                    if "*" not in name and (name == domain or name.endswith(f".{domain}")):
+                                        if name not in result.subdomains:
+                                            result.subdomains.append(name.lower())
+                                            result.assets.append({
+                                                "asset": name.lower(),
+                                                "asset_type": "SUBDOMAIN",
+                                                "source": "censys_ct",
+                                                "confidence": 0.9,
+                                                "evidence": [f"Observed in Censys certificate transparency data"],
+                                                "evidence_chain": [
+                                                    {"source": "censys_ct", "observation": f"Certificate SAN: {name}", "confidence": 0.9}
+                                                ],
+                                                "first_seen": "",
+                                                "last_seen": datetime.now(timezone.utc).isoformat(),
+                                                "priority": "MEDIUM_VALUE",
+                                                "priority_score": 65,
+                                                "priority_reasoning": [f"Discovered via Censys certificate search"],
+                                                "ownership": "LIKELY_OWNER",
+                                            })
+                        # URLScan returns page data with domains and URLs
+                        if source_name == "urlscan":
+                            url_results = ds_result.data.get("results", [])
+                            for r in url_results:
+                                page = r.get("page", {})
+                                url_domain = page.get("domain", "")
+                                if url_domain and url_domain.endswith(f".{domain}"):
+                                    if url_domain not in result.subdomains:
+                                        result.subdomains.append(url_domain.lower())
+                                url = page.get("url", "")
+                                if url and url not in result.archived_urls:
+                                    result.archived_urls.append(url)
+                        # Shodan returns hostname data
+                        if source_name == "shodan":
+                            matches = ds_result.data.get("matches", [])
+                            for match in matches:
+                                hostnames = match.get("hostnames", [])
+                                for hn in hostnames:
+                                    if hn.endswith(f".{domain}") or hn == domain:
+                                        if hn not in result.subdomains:
+                                            result.subdomains.append(hn.lower())
+                                            result.assets.append({
+                                                "asset": hn.lower(),
+                                                "asset_type": "SUBDOMAIN",
+                                                "source": "shodan",
+                                                "confidence": 0.8,
+                                                "evidence": [f"Observed in Shodan hostname data"],
+                                                "evidence_chain": [
+                                                    {"source": "shodan", "observation": f"Shodan hostname: {hn}", "confidence": 0.8}
+                                                ],
+                                                "first_seen": "",
+                                                "last_seen": datetime.now(timezone.utc).isoformat(),
+                                                "priority": "MEDIUM_VALUE",
+                                                "priority_score": 60,
+                                                "priority_reasoning": [f"Discovered via Shodan"],
+                                                "ownership": "LIKELY_OWNER",
+                                            })
+            except Exception:
+                pass
 
         # Certificate Transparency — real API query for observed subdomains
         ct_subdomains, ct_assets = await self._query_crtsh(domain)
@@ -750,9 +862,10 @@ class PassiveIntelligenceAgent:
     # PHASE 9 — ATTACK SURFACE MODELING (0-100 PRIORITY SCORING)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase9_attack_surface(self, result: PassiveIntelResult):
+    async def _phase9_attack_surface(self, result: PassiveIntelResult):
         """Build an attack surface map with 0-100 priority scoring.
 
+        AI-Powered: Uses LLM for intelligent prioritization when available.
         Considers:
         - Business criticality
         - Authentication boundaries
@@ -761,8 +874,35 @@ class PassiveIntelligenceAgent:
         - API exposure
         - Cloud exposure
 
-        Provide reasoning for every score.
+        Falls back to deterministic scoring.
         """
+        # Try AI-powered attack surface modeling
+        if self.llm_provider and self.llm_provider.is_available and result.assets:
+            try:
+                ai_priorities = await self.llm_provider.prioritize_assets(
+                    program_context=f"Target: {result.domain}",
+                    assets=[
+                        {"asset": a.get("asset", ""), "type": a.get("asset_type", ""), "confidence": a.get("confidence", 0)}
+                        for a in result.assets[:20]
+                    ],
+                    technologies=[t.get("name", "") for t in result.technologies],
+                )
+                # Apply AI priority scores
+                for ai_item in ai_priorities:
+                    if not isinstance(ai_item, dict):
+                        continue
+                    asset_name = ai_item.get("asset_name", "")
+                    ai_score = ai_item.get("priority_score", 50)
+                    ai_reasoning = ai_item.get("reasoning", [])
+                    for asset_entry in result.assets:
+                        if asset_entry.get("asset") == asset_name:
+                            asset_entry["priority_score"] = min(int(ai_score), 100)
+                            if ai_reasoning:
+                                asset_entry["priority_reasoning"] = ai_reasoning[:5]
+                result.downstream_guidance["ai_attack_surface"] = True
+            except Exception:
+                pass
+
         for asset_entry in result.assets:
             asset = asset_entry.get("asset", "")
             asset_type = asset_entry.get("asset_type", "")
@@ -1002,9 +1142,10 @@ class PassiveIntelligenceAgent:
     # PHASE 14 — DOWNSTREAM GUIDANCE & COLLECTION PLAN
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase14_downstream(self, result: PassiveIntelResult):
+    async def _phase14_downstream(self, result: PassiveIntelResult):
         """Generate recommendations for downstream agents.
 
+        AI-Powered: Uses LLM for smarter guidance when available.
         Includes collection plan with prioritized asset-specific recommendations.
 
         Prioritize:
@@ -1014,6 +1155,35 @@ class PassiveIntelligenceAgent:
 
         Do not recommend actions on unverified assets.
         """
+        # Try AI-powered downstream guidance
+        if self.llm_provider and self.llm_provider.is_available and result.assets:
+            try:
+                ai_osint = await self.llm_provider.analyze_osint(
+                    target=result.domain,
+                    osint_data={
+                        "asset_count": len(result.assets),
+                        "subdomain_count": len(result.subdomains),
+                        "technology_count": len(result.technologies),
+                        "historical_count": len(result.historical_assets),
+                        "top_assets": [a.get("asset", "") for a in result.assets[:5]],
+                    },
+                    tools_used=result.sources_checked,
+                )
+                if ai_osint.get("recommendations"):
+                    recs = ai_osint["recommendations"]
+                    if isinstance(recs, list):
+                        result.downstream_guidance["ai_recommendations"] = recs[:10]
+                    elif isinstance(recs, dict):
+                        result.downstream_guidance["ai_recommendations"] = recs
+                if ai_osint.get("attack_surface", {}).get("priority_targets"):
+                    ai_targets = ai_osint["attack_surface"]["priority_targets"]
+                    if isinstance(ai_targets, list):
+                        result.recommended_priority_targets.extend(
+                            t for t in ai_targets if t not in result.recommended_priority_targets
+                        )
+            except Exception:
+                pass
+
         # Sort assets by priority_score for targeting
         sorted_assets = sorted(
             [a for a in result.assets if a.get("confidence", 0) >= 0.6 and a.get("priority_score", 0) >= 40],
@@ -1500,9 +1670,10 @@ class PassiveIntelligenceAgent:
     # PHASE 20 — ANALYST CHALLENGE PROCESS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase20_challenge(self, result: PassiveIntelResult):
+    async def _phase20_challenge(self, result: PassiveIntelResult):
         """Attempt to disprove every discovery.
 
+        AI-Powered: Uses LLM for smarter challenge analysis.
         For every asset, ask:
         - Could this be incorrect?
         - Could ownership be wrong?
@@ -1512,7 +1683,40 @@ class PassiveIntelligenceAgent:
         If concerns cannot be resolved: reduce confidence.
         Never inflate certainty.
         """
+        # Track which assets were AI-challenged to avoid duplicate deterministic entries
+        ai_challenged_assets = set()
+
+        # Try AI-powered challenge on high-value assets
+        if self.llm_provider and self.llm_provider.is_available:
+            high_value = [a for a in result.assets if a.get("priority_score", 0) >= 70]
+            for asset_entry in high_value[:5]:
+                try:
+                    ai_challenge = await self.llm_provider.reason_structured(
+                        f"Challenge this asset discovery: asset={asset_entry.get('asset', '')}, "
+                        f"type={asset_entry.get('asset_type', '')}, "
+                        f"source={asset_entry.get('source', '')}, "
+                        f"confidence={asset_entry.get('confidence', 0)}, "
+                        f"evidence={asset_entry.get('evidence', [])[:3]}. "
+                        f"Generate alternative explanations for this discovery."
+                    )
+                    if ai_challenge:
+                        challenges = ai_challenge.get("alternative_explanations", [])
+                        ai_challenges_list = challenges[:3] if isinstance(challenges, list) else []
+                        result.challenge_results.append({
+                            "asset": asset_entry.get("asset", ""),
+                            "challenges": ai_challenges_list,
+                            "concerns_resolved": [],
+                            "concerns_unresolved": ai_challenges_list,
+                            "confidence_adjustment": -0.05 if ai_challenges_list else 0.0,
+                        })
+                        ai_challenged_assets.add(asset_entry.get("asset", ""))
+                except Exception:
+                    pass
+
         for asset_entry in result.assets:
+            # Skip assets already challenged by AI
+            if asset_entry.get("asset", "") in ai_challenged_assets:
+                continue
             asset = asset_entry.get("asset", "")
             source = asset_entry.get("source", "")
             confidence = asset_entry.get("confidence", 0)

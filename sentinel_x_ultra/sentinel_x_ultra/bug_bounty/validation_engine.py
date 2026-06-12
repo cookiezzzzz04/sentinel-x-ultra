@@ -93,9 +93,17 @@ class ValidationEngineAgent:
 
     A skeptical validator that assumes every finding may be incorrect
     until evidence proves otherwise. Primary objective: minimize false positives.
+
+    AI-POWERED (Phase 1 Upgrade):
+    - Uses LLMProvider for intelligent adversarial review
+    - AI-powered vulnerability-specific validation
+    - LLM-driven false positive analysis with contextual understanding
+    - Falls back to deterministic logic when LLM unavailable
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
+        self.llm_provider = llm_provider
+        self.memory = memory
         self.known_findings: List[Dict[str, Any]] = []
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -118,8 +126,8 @@ class ValidationEngineAgent:
         )
         stages.append("fact_extraction")
 
-        # Stage 3
-        result.false_positive_explanations = self._stage3_adversarial(
+        # Stage 3 (AI-enhanced)
+        result.false_positive_explanations = await self._stage3_adversarial(
             finding, normalized
         )
         stages.append("adversarial_review")
@@ -134,8 +142,8 @@ class ValidationEngineAgent:
         result.reproducibility_score = repro_score
         stages.append("reproducibility")
 
-        # Stage 6
-        verified, unsupported, missing = self._stage6_vuln_specific(
+        # Stage 6 (AI-enhanced)
+        verified, unsupported, missing = await self._stage6_vuln_specific(
             finding, normalized
         )
         result.verified_claims = verified
@@ -361,14 +369,34 @@ class ValidationEngineAgent:
     # STAGE 3 — ADVERSARIAL REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage3_adversarial(
+    async def _stage3_adversarial(
         self, finding: Dict[str, Any], normalized: NormalizedFinding
     ) -> List[str]:
         """
         Generate at least five possible explanations why the finding might be invalid.
         Attempt to falsify the finding before accepting it.
+
+        AI-Powered: Uses LLM for intelligent adversarial review when available.
+        Generates context-aware falsification attempts.
+        Falls back to template-based falsification.
         """
         explanations: List[str] = []
+
+        # Try AI-powered adversarial review
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                ai_fp = await self.llm_provider.analyze_false_positive(
+                    finding_title=finding.get("title", "Unknown Finding"),
+                    vuln_type=normalized.vulnerability_type,
+                    target=normalized.asset,
+                    evidence={"facts": normalized.evidence_supplied, "steps": normalized.reproduction_steps},
+                    steps=normalized.reproduction_steps,
+                )
+                if ai_fp and ai_fp.get("alternative_explanations"):
+                    explanations = ai_fp["alternative_explanations"][:8]
+            except Exception:
+                pass
+
         vtype = normalized.vulnerability_type
 
         # Built-in falsification patterns
@@ -595,17 +623,38 @@ class ValidationEngineAgent:
     # STAGE 6 — VULNERABILITY-SPECIFIC VALIDATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage6_vuln_specific(
+    async def _stage6_vuln_specific(
         self, finding: Dict[str, Any], normalized: NormalizedFinding
     ) -> tuple[List[str], List[str], List[str]]:
         """
         Apply validation rules based on vulnerability type.
         Returns (verified_claims, unsupported_claims, missing_evidence).
+
+        AI-Powered: Uses LLM for intelligent type-specific validation when available.
+        Falls back to deterministic validation rules.
         """
         vtype = normalized.vulnerability_type
         verified: List[str] = []
         unsupported: List[str] = []
         missing: List[str] = []
+
+        # Try AI-powered type-specific validation
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                ai_result = await self.llm_provider.make_policy_decision(
+                    finding=finding,
+                    policy={"accepted": [], "rejected": []},
+                    accepted_types=[],
+                    rejected_types=[],
+                )
+                if ai_result.get("verified_claims"):
+                    verified = ai_result["verified_claims"]
+                if ai_result.get("unsupported_claims"):
+                    unsupported = ai_result["unsupported_claims"]
+                if ai_result.get("missing_evidence"):
+                    missing = ai_result["missing_evidence"]
+            except Exception:
+                pass
 
         validate_fn = {
             "xss": self._validate_xss,

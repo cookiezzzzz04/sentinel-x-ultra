@@ -47,6 +47,7 @@ coverage.xml
 
 # Environments
 .env
+.env.*
 .venv
 env/
 venv/
@@ -62,11 +63,19 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# GitHub workflows
+.github/
 
 # Logs
 *.log
 logs/
 *.log.*
+nohup.out
+server_log.txt
 
 # Database files
 *.db
@@ -81,10 +90,9 @@ temp/
 tmp/
 *.tmp
 
-# Frontend build artifacts
-frontend/dist/
-frontend/node_modules/
-frontend/.vite/
+# User tool installations (security tools go here)
+.sentinel/
+.sentinelx/
 
 # AI assistant / IDE extension state
 .agents/
@@ -97,15 +105,33 @@ frontend/.vite/
 api_keys.json
 secrets.json
 *.secret
+config.local.json
+agent_models.local.json
 
-# User-specific configuration (API keys, agent configs)
+# User-specific configuration
 .sentinel-x/
 providers.json
 agent_models.json
+investigation_log.json
+findings.json
 
 # Temporary one-off scripts (not part of the product)
 run_test_scan.py
 seed_real_findings.py
 fix_fake_data.py
-server_log.txt
 nul
+_wire_new_scan.py
+_patch_app.py
+patch_recon.py
+test_*.py
+local_*.py
+dev_*.py
+
+# Frontend build artifacts
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+
+# Local settings override
+settings.local.yaml
+settings.local.json

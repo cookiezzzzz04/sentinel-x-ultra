@@ -45,6 +45,13 @@ class FfufTool:
         
     def is_available(self) -> bool:
         """Check if ffuf is installed and accessible"""
+        # Check ~/.sentinelx/tools/ first
+        tools_dir = os.path.expanduser("~/.sentinelx/tools")
+        for name in ["ffuf", "ffuf.exe"]:
+            p = os.path.join(tools_dir, name)
+            if os.path.exists(p):
+                return True
+        # Fall back to PATH check
         try:
             result = subprocess.run(
                 ['ffuf', '-V'],

@@ -194,6 +194,10 @@ class AnalysisAgent:
       8. Confidence Model — from completeness of evidence
     """
 
+    def __init__(self, llm_provider=None, memory=None):
+        self.llm_provider = llm_provider
+        self.memory = memory
+
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API (Backward Compatible)
     # ═══════════════════════════════════════════════════════════════════════════
@@ -239,13 +243,13 @@ class AnalysisAgent:
             result.detailed = detailed
             return result
 
-        # Step 3: CVSS Derivation (Strict)
-        cvss_entry = self._derive_cvss(finding, evidence_items)
+        # Step 3: CVSS Derivation (Strict) — Phase 5 Deep: LLM-enhanced
+        cvss_entry = await self._derive_cvss(finding, evidence_items)
         detailed.cvss = cvss_entry
         self._populate_legacy_cvss(result, cvss_entry)
 
-        # Step 4: CWE Classification
-        cwe_info = self._classify_cwe(finding, evidence_items)
+        # Step 4: CWE Classification — Phase 5 Deep: LLM-enhanced
+        cwe_info = await self._classify_cwe(finding, evidence_items)
         detailed.cwe = cwe_info
         result.cwe_primary = cwe_info.primary
         result.cwe_secondary = [alt.cwe for alt in cwe_info.alternatives if alt.cwe]
@@ -265,7 +269,7 @@ class AnalysisAgent:
         detailed.business_impact = impact
         result.business_impact = impact
 
-        # Step 8: Confidence Model
+        # Step 8: Confidence Model — Phase 5 Deep: LLM-enhanced
         confidence, uncertainties = self._calculate_confidence(finding, evidence_items, cvss_entry, cwe_info, impact)
         detailed.confidence = confidence
         detailed.uncertainties = uncertainties
@@ -367,8 +371,11 @@ class AnalysisAgent:
     # STEP 3 — CVSS DERIVATION (STRICT)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _derive_cvss(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CVSSEntry:
+    async def _derive_cvss(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CVSSEntry:
         """Derive CVSS 3.1 from evidence only.
+
+        Phase 5 Deep: Uses LLM for nuanced CVSS metric determination when
+        evidence is ambiguous. Falls back to deterministic keyword-based logic.
 
         Attack Vector (AV): Derived only from observed access path
         Attack Complexity (AC): Low only if reproducible without special conditions
@@ -376,106 +383,126 @@ class AnalysisAgent:
         User Interaction (UI): Required only if user action is evidenced
         Scope (S): Changed only if cross-boundary impact is evidenced
         Impact Metrics (C/I/A): Derived ONLY from confirmed observed impact
-
-        Hardcoded CVSS vectors are forbidden.
         """
         metrics = CVSSMetrics()
         evidence_text = " ".join(e["value"] for e in evidence).lower()
-        confidence_penalty = 0.0
         uncertainties = []
 
-        # --- Attack Vector (AV) ---
-        if self._evidence_mentions(evidence_text, ["network", "remote", "http://", "https://", "internet"]):
-            metrics.AV = "Network"
-        elif self._evidence_mentions(evidence_text, ["adjacent", "local network", "wifi", "bluetooth"]):
-            metrics.AV = "Adjacent"
-        elif self._evidence_mentions(evidence_text, ["local", "physical access", "console"]):
-            metrics.AV = "Local"
-        elif self._evidence_mentions(evidence_text, ["physical"]):
-            metrics.AV = "Physical"
-        else:
-            # Default to Network for web-based findings (most common)
-            metrics.AV = "Network"
-            uncertainties.append("AV: No evidence of access path — defaulted to Network")
-            confidence_penalty += 0.05
+        # Phase 5 Deep: Try LLM for nuanced CVSS scoring
+        llm_enhanced = False
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                vuln_type = finding.get("type", "unknown")
+                description = finding.get("description", "")[:300]
+                prompt = (
+                    f"Derive CVSS 3.1 metrics from this vulnerability evidence.\n\n"
+                    f"Type: {vuln_type}\n"
+                    f"Description: {description}\n"
+                    f"Evidence: {evidence_text[:1000]}\n\n"
+                    f"Return ONLY a JSON object with these exact keys:\n"
+                    f"{{\"AV\": \"Network\"|\"Adjacent\"|\"Local\"|\"Physical\", "
+                    f"\"AC\": \"Low\"|\"High\", "
+                    f"\"PR\": \"None\"|\"Low\"|\"High\", "
+                    f"\"UI\": \"None\"|\"Required\", "
+                    f"\"S\": \"Unchanged\"|\"Changed\", "
+                    f"\"C\": \"None\"|\"Low\"|\"High\", "
+                    f"\"I\": \"None\"|\"Low\"|\"High\", "
+                    f"\"A\": \"None\"|\"Low\"|\"High\"}}"
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.1)
+                if isinstance(llm_result, dict):
+                    for metric in ["AV", "AC", "PR", "UI", "S", "C", "I", "A"]:
+                        val = llm_result.get(metric, "")
+                        if val and val.upper() in ("NETWORK", "ADJACENT", "LOCAL", "PHYSICAL",
+                                                     "LOW", "HIGH", "NONE", "REQUIRED",
+                                                     "UNCHANGED", "CHANGED"):
+                            setattr(metrics, metric, val.capitalize() if val.lower() != "none" else "None")
+                            llm_enhanced = True
+            except Exception:
+                pass
 
-        # --- Attack Complexity (AC) ---
-        reproducible_count = sum(1 for e in evidence if self._evidence_mentions(
-            e["value"].lower(), ["reproduc", "repeat", "consistent", "always", "every time"]
-        ))
-        if reproducible_count >= 2:
-            metrics.AC = "Low"
-        elif self._evidence_mentions(evidence_text, ["special condition", "race condition", "timing",
-                                                      "specific version", "requires"]):
-            metrics.AC = "High"
-            uncertainties.append("AC: Special conditions required for reproduction")
-            confidence_penalty += 0.1
-        else:
-            metrics.AC = "Low"
-            uncertainties.append("AC: No evidence of special conditions — assumed Low")
-            confidence_penalty += 0.05
-
-        # --- Privileges Required (PR) ---
-        if self._evidence_mentions(evidence_text, ["authenticated", "logged in", "requires login",
-                                                    "session required", "valid session"]):
-            # Check if the evidence describes a way to bypass authentication
-            if self._evidence_mentions(evidence_text, ["bypass", "no auth", "without auth",
-                                                        "unauthenticated access", "no login"]):
-                metrics.PR = "None"
+        if not llm_enhanced:
+            # Fallback: deterministic keyword-based CVSS
+            # Attack Vector (AV)
+            if self._evidence_mentions(evidence_text, ["network", "remote", "http://", "https://", "internet"]):
+                metrics.AV = "Network"
+            elif self._evidence_mentions(evidence_text, ["adjacent", "local network", "wifi", "bluetooth"]):
+                metrics.AV = "Adjacent"
+            elif self._evidence_mentions(evidence_text, ["local", "physical access", "console"]):
+                metrics.AV = "Local"
+            elif self._evidence_mentions(evidence_text, ["physical"]):
+                metrics.AV = "Physical"
             else:
-                metrics.PR = "Low"
-        elif self._evidence_mentions(evidence_text, ["admin", "administrator", "root"]):
-            metrics.PR = "High"
-        else:
-            metrics.PR = "None"
-            uncertainties.append("PR: No authentication evidence — assumed None")
+                metrics.AV = "Network"
+                uncertainties.append("AV: No evidence of access path — defaulted to Network")
 
-        # --- User Interaction (UI) ---
-        if self._evidence_mentions(evidence_text, ["click", "user interaction", "victim visit",
-                                                    "social engineering", "phishing"]):
-            metrics.UI = "Required"
-        else:
-            metrics.UI = "None"
-            uncertainties.append("UI: No user interaction evidenced — assumed None")
+            # Attack Complexity (AC)
+            reproducible_count = sum(1 for e in evidence if self._evidence_mentions(
+                e["value"].lower(), ["reproduc", "repeat", "consistent", "always", "every time"]
+            ))
+            if reproducible_count >= 2:
+                metrics.AC = "Low"
+            elif self._evidence_mentions(evidence_text, ["special condition", "race condition", "timing",
+                                                          "specific version", "requires"]):
+                metrics.AC = "High"
+            else:
+                metrics.AC = "Low"
 
-        # --- Scope (S) ---
-        if self._evidence_mentions(evidence_text, ["boundary", "cross-boundary", "scope change",
-                                                    "different context", "escalation"]):
-            metrics.S = "Changed"
-        else:
-            metrics.S = "Unchanged"
+            # Privileges Required (PR)
+            if self._evidence_mentions(evidence_text, ["authenticated", "logged in", "requires login",
+                                                        "session required", "valid session"]):
+                if self._evidence_mentions(evidence_text, ["bypass", "no auth", "without auth",
+                                                            "unauthenticated access", "no login"]):
+                    metrics.PR = "None"
+                else:
+                    metrics.PR = "Low"
+            elif self._evidence_mentions(evidence_text, ["admin", "administrator", "root"]):
+                metrics.PR = "High"
+            else:
+                metrics.PR = "None"
 
-        # --- Confidentiality (C) ---
-        if self._evidence_mentions(evidence_text, ["data returned", "data exposed", "unauthorized access",
-                                                    "data leak", "information disclosure", "confidential"]):
-            metrics.C = "High"
-        elif self._evidence_mentions(evidence_text, ["version disclosure", "banner", "header disclosure"]):
-            metrics.C = "Low"
-        else:
-            metrics.C = "None"
-            uncertainties.append("C: No confidentiality impact evidenced — None")
-            confidence_penalty += 0.1
+            # User Interaction (UI)
+            if self._evidence_mentions(evidence_text, ["click", "user interaction", "victim visit",
+                                                        "social engineering", "phishing"]):
+                metrics.UI = "Required"
+            else:
+                metrics.UI = "None"
 
-        # --- Integrity (I) ---
-        if self._evidence_mentions(evidence_text, ["modified", "changed", "altered", "injected",
-                                                    "script execution", "redirect"]):
-            metrics.I = "High"
-        elif self._evidence_mentions(evidence_text, ["parameter modified", "header modified"]):
-            metrics.I = "Low"
-        else:
-            metrics.I = "None"
-            uncertainties.append("I: No integrity impact evidenced — None")
+            # Scope (S)
+            if self._evidence_mentions(evidence_text, ["boundary", "cross-boundary", "scope change",
+                                                        "different context", "escalation"]):
+                metrics.S = "Changed"
+            else:
+                metrics.S = "Unchanged"
 
-        # --- Availability (A) ---
-        if self._evidence_mentions(evidence_text, ["denial", "crash", "hang", "unavailable",
-                                                    "slow response", "timeout"]):
-            metrics.A = "High"
-        elif self._evidence_mentions(evidence_text, ["slow", "delayed"]):
-            metrics.A = "Low"
-        else:
-            metrics.A = "None"
+            # Confidentiality (C)
+            if self._evidence_mentions(evidence_text, ["data returned", "data exposed", "unauthorized access",
+                                                        "data leak", "information disclosure", "confidential"]):
+                metrics.C = "High"
+            elif self._evidence_mentions(evidence_text, ["version disclosure", "banner", "header disclosure"]):
+                metrics.C = "Low"
+            else:
+                metrics.C = "None"
 
-        # Build vector string from evidence-derived metrics
+            # Integrity (I)
+            if self._evidence_mentions(evidence_text, ["modified", "changed", "altered", "injected",
+                                                        "script execution", "redirect"]):
+                metrics.I = "High"
+            elif self._evidence_mentions(evidence_text, ["parameter modified", "header modified"]):
+                metrics.I = "Low"
+            else:
+                metrics.I = "None"
+
+            # Availability (A)
+            if self._evidence_mentions(evidence_text, ["denial", "crash", "hang", "unavailable",
+                                                        "slow response", "timeout"]):
+                metrics.A = "High"
+            elif self._evidence_mentions(evidence_text, ["slow", "delayed"]):
+                metrics.A = "Low"
+            else:
+                metrics.A = "None"
+
+        # Build vector string
         all_known = all(
             getattr(metrics, m) != "UNKNOWN"
             for m in ["AV", "AC", "PR", "UI", "S", "C", "I", "A"]
@@ -487,16 +514,12 @@ class AnalysisAgent:
                 f"PR:{metrics.PR[0]}/UI:{metrics.UI[0]}/"
                 f"S:{metrics.S[0]}/C:{metrics.C[0]}/I:{metrics.I[0]}/A:{metrics.A[0]}"
             )
-
-            # Calculate base score (simplified CVSS 3.1)
             score = self._calculate_cvss_score(metrics)
             severity = self._score_to_severity(score)
         else:
             vector = "UNKNOWN"
             score = -1.0
             severity = "UNKNOWN"
-            uncertainties.append("CVSS: Some metrics could not be derived from evidence")
-            confidence_penalty += 0.2
 
         entry = CVSSEntry(
             score=str(round(score, 1)) if score >= 0 else "UNKNOWN",
@@ -597,8 +620,11 @@ class AnalysisAgent:
     # STEP 4 — CWE CLASSIFICATION (EVIDENCE-JUSTIFIED)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _classify_cwe(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CWEInfo:
+    async def _classify_cwe(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CWEInfo:
         """Classify CWE from observed behavior only.
+
+        Phase 5 Deep: Uses LLM for nuanced CWE classification when evidence
+        is ambiguous. Falls back to deterministic pattern matching.
 
         CWE must be:
         - Directly supported by observed behavior
@@ -610,7 +636,35 @@ class AnalysisAgent:
         evidence_text = " ".join(e["value"] for e in evidence).lower()
         patterns_found = []
 
-        # Check each behavioral pattern against evidence text
+        # Phase 5 Deep: Try LLM for nuanced CWE classification
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                vuln_type = finding.get("type", "unknown")
+                description = finding.get("description", "")[:300]
+                prompt = (
+                    f"Classify this vulnerability into a CWE based on the evidence.\n\n"
+                    f"Vulnerability Type: {vuln_type}\n"
+                    f"Description: {description}\n"
+                    f"Evidence: {evidence_text[:1000]}\n\n"
+                    f"Return ONLY a JSON object with these exact keys:\n"
+                    f"{{\"primary\": \"CWE-NNN\", \"alternatives\": [{{\"cwe\": \"CWE-NNN\", \"confidence\": 0.0}}]}}"
+                )
+                llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.1)
+                if isinstance(llm_result, dict) and llm_result.get("primary", "").startswith("CWE-"):
+                    alt_list = llm_result.get("alternatives", [])
+                    alternatives = []
+                    if isinstance(alt_list, list):
+                        for a in alt_list:
+                            if isinstance(a, dict) and a.get("cwe", "").startswith("CWE-"):
+                                alternatives.append(CWEAlternative(
+                                    cwe=a["cwe"],
+                                    confidence=min(float(a.get("confidence", 0.3)), 0.95),
+                                ))
+                    return CWEInfo(primary=llm_result["primary"], alternatives=alternatives)
+            except Exception:
+                pass
+
+        # Fallback: deterministic pattern matching
         pattern_indicators = {
             "unauthorized_data_access": ["unauthorized", "another user", "other user", "access denied",
                                           "forbidden", "not authorized", "id=", "parameter modified"],
@@ -639,8 +693,6 @@ class AnalysisAgent:
             matches = sum(1 for ind in indicators if ind in evidence_text)
             if matches >= 2:
                 patterns_found.append((pattern_name, matches))
-            else:
-                patterns_found.append((pattern_name, 1))
 
         # Rank by match count
         patterns_found.sort(key=lambda x: x[1], reverse=True)

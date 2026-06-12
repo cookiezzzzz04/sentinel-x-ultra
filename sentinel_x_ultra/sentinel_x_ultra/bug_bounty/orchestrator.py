@@ -9,13 +9,15 @@ Orchestrates the complete bug bounty workflow:
 
 import asyncio
 import json
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from .system_prompts import FOUNDATIONAL_PRINCIPLES, DECISION_HIERARCHY, AGENT_ARCHITECTURE
-from .url_parser import URLParserAgent, ProgramIntelligence
+from .llm_provider import LLMProvider, LLMConfig, get_llm_provider, VulnerabilityHypothesis
+from .url_parser import URLParserAgent, ProgramIntelligence, AssetEntry
 from .policy_enforcer import PolicyEnforcerAgent, PolicyRule, PolicyDecisionOutput, PolicyDecision
 from .webhook import WebhookManager
 from .scope_guardian import ScopeGuardianAgent, ScopeCheckResult, ScopeAuthorization, AuthorizationState
@@ -26,6 +28,17 @@ from .validation_engine import ValidationEngineAgent, ValidationResult
 from .exploitation import ExploitationAgent, ProofOfConcept
 from .analysis import AnalysisAgent, FindingAnalysis
 from .report_generation import ReportGenerationAgent, VulnerabilityReport
+from .agent_memory import AgentMemory
+from .data_sources import DataSourceAggregator
+from ..agent_tool_integration import get_agent_tool_integration
+from .execution_engine import (
+    ParallelExecutor, ResultCache, RateLimiter, TimeoutManager,
+    get_parallel_executor, get_result_cache, get_rate_limiter, get_timeout_manager,
+)
+from .security_guard import (
+    ScopeValidator, OutputSanitizer, EthicalGuard, ResourceLimiter,
+    get_scope_validator, get_output_sanitizer, get_ethical_guard, get_resource_limiter,
+)
 
 
 @dataclass
@@ -44,6 +57,7 @@ class BugBountyPipelineResult:
     proofs_of_concept: List[ProofOfConcept] = field(default_factory=list)
     analyses: List[FindingAnalysis] = field(default_factory=list)
     reports: List[VulnerabilityReport] = field(default_factory=list)
+    file_findings: List[Dict[str, Any]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     started_at: str = ""
     completed_at: str = ""
@@ -55,20 +69,48 @@ class BugBountyOrchestrator:
     """
     Orchestrates all 10 bug bounty agents with the foundational principles
     and decision hierarchy baked into every step.
+
+    AI-POWERED UPGRADE (Phase 1):
+    - All agents now have access to an LLMProvider for AI reasoning
+    - Replaces hardcoded heuristics with real LLM-powered analysis
+    - Supports OpenAI, Claude, Ollama providers
+
+    REAL TOOL INTEGRATION (Phase 2):
+    - Agents 4, 5, 6 call real tools via AgentToolIntegration
+    - 30 security tools available: nmap, httpx, nuclei, sqlmap, etc.
     """
 
-    def __init__(self, webhook_manager: Optional[WebhookManager] = None):
+    def __init__(self, webhook_manager: Optional[WebhookManager] = None, llm_provider: Optional[LLMProvider] = None):
         self.webhook_manager = webhook_manager
-        self.agent_1 = URLParserAgent()
-        self.agent_2 = PolicyEnforcerAgent(webhook_manager=webhook_manager)  # Pass webhook for per-decision events
-        self.agent_3 = ScopeGuardianAgent()
-        self.agent_4 = PassiveIntelligenceAgent()
-        self.agent_5 = ActiveEnumerationAgent()
-        self.agent_6 = VulnerabilityScannerAgent()
-        self.agent_7 = ValidationEngineAgent()
-        self.agent_8 = ExploitationAgent()
-        self.agent_9 = AnalysisAgent()
-        self.agent_10 = ReportGenerationAgent()
+        self.llm_provider = llm_provider or get_llm_provider()
+        self.memory = AgentMemory()  # Phase 3: Cross-agent shared memory
+
+        # Phase 6: Execution infrastructure — must be created before DataSourceAggregator
+        self.executor = get_parallel_executor(max_concurrency=10)
+        self.cache = get_result_cache(default_ttl=600.0)
+        self.rate_limiter = get_rate_limiter(tokens_per_second=20.0)
+        self.timeout_manager = get_timeout_manager(default_timeout=60.0)
+
+        # Phase 4: Live external APIs with shared cache (depends on Phase 6 cache)
+        self.data_sources = DataSourceAggregator(cache=self.cache)
+
+        # Phase 7: Security infrastructure
+        self.scope_validator = get_scope_validator()
+        self.sanitizer = get_output_sanitizer(mode="MODERATE")
+        self.ethical_guard = get_ethical_guard(fail_on_violation=False)
+        self.resource_limiter = get_resource_limiter()
+
+        # All agents now receive the LLM provider for AI reasoning
+        self.agent_1 = URLParserAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_2 = PolicyEnforcerAgent(webhook_manager=webhook_manager, llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_3 = ScopeGuardianAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_4 = PassiveIntelligenceAgent(llm_provider=self.llm_provider, memory=self.memory, data_sources=self.data_sources)
+        self.agent_5 = ActiveEnumerationAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_6 = VulnerabilityScannerAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_7 = ValidationEngineAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_8 = ExploitationAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_9 = AnalysisAgent(llm_provider=self.llm_provider, memory=self.memory)
+        self.agent_10 = ReportGenerationAgent(llm_provider=self.llm_provider, memory=self.memory)
         self.system_prompt = self._build_system_prompt()
         self.ethical_rules = self._build_ethical_rules()
 
@@ -99,6 +141,8 @@ class BugBountyOrchestrator:
         target_domain: str = "",
         in_scope: Optional[List[str]] = None,
         out_of_scope: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        folder_files: Optional[Dict[str, str]] = None,
     ) -> BugBountyPipelineResult:
         """Run the complete 10-agent bug bounty pipeline."""
         result = BugBountyPipelineResult(
@@ -107,6 +151,10 @@ class BugBountyOrchestrator:
         )
 
         try:
+            # Store folder files on orchestrator for agent access
+            self.folder_files = folder_files or {}
+            self._project_id = project_id
+            
             # Phase 1: Program Intelligence (Agents 1-3)
             if target_url:
                 result.program_intel = await self._run_agent_1(target_url)
@@ -134,10 +182,26 @@ class BugBountyOrchestrator:
             self._authorize_targets(result)
 
             # Phase 3: Vulnerability Testing (Agent 6)
+            # Aggregated scanning: once a vulnerability type is found on any endpoint,
+            # skip it on subsequent endpoints to prevent 89 identical findings.
+            found_vuln_types = set()
             for enum_result in result.active_enum:
                 for endpoint in enum_result.endpoints:
-                    test_results = await self._run_agent_6(endpoint.path)
+                    # Only test vulnerability types not yet found on previous endpoints
+                    remaining_types = None if not found_vuln_types else [
+                        t for t in ["sql_injection", "xss", "idor", "ssrf", "auth_bypass",
+                                    "command_injection", "ssti", "path_traversal", "xxe",
+                                    "open_redirect", "csrf", "business_logic",
+                                    "information_disclosure", "privilege_escalation"]
+                        if t not in found_vuln_types
+                    ]
+                    if remaining_types is not None and not remaining_types:
+                        continue  # All types already found, skip this endpoint
+                    test_results = await self._run_agent_6(endpoint.path, test_types=remaining_types)
                     result.scan_results.extend(test_results)
+                    for t in test_results:
+                        if t.vulnerable:
+                            found_vuln_types.add(t.test_type)
 
             # Evaluate all findings through Agent 2's Policy Decision Engine (12-phase pipeline)
             self._evaluate_findings(result)
@@ -180,6 +244,10 @@ class BugBountyOrchestrator:
                 report = await self._run_agent_10(finding, analysis, poc)
                 result.reports.append(report)
 
+            # Scan folder files for security issues (API keys, secrets, vulnerable patterns)
+            if self.folder_files:
+                result.file_findings = self._scan_folder_files(self.folder_files)
+
         except Exception as e:
             result.errors.append(f"Pipeline error: {str(e)}")
 
@@ -210,9 +278,41 @@ class BugBountyOrchestrator:
         )
 
     async def _run_agent_1(self, url: str) -> Optional[ProgramIntelligence]:
-        """Agent 1: Parse program URL."""
+        """Agent 1: Parse program URL using AI-powered intelligence.
+
+        Phase 1 Upgrade: Uses LLMProvider for advanced program analysis
+        when page content is available. Falls back to regex extraction.
+        """
         try:
-            return await self.agent_1.parse(url)
+            result = await self.agent_1.parse(url)
+            # If we have raw content and LLM is available, enhance with AI analysis
+            if result.raw_content and self.llm_provider and self.llm_provider.is_available:
+                try:
+                    ai_analysis = await self.llm_provider.analyze_program(url, result.raw_content)
+                    if ai_analysis:
+                        # Merge AI findings into the intelligence profile
+                        result.program_name = ai_analysis.get("program_name", result.program_name)
+                        result.organization = ai_analysis.get("organization", result.organization)
+                        result.extraction_confidence = "HIGH" if ai_analysis.get("status") else result.extraction_confidence
+                        # Add AI-discovered assets
+                        ai_assets = ai_analysis.get("assets", [])
+                        if ai_assets:
+                            existing = set(a.identifier for a in result.assets)
+                            for asset_data in ai_assets:
+                                if isinstance(asset_data, dict) and asset_data.get("identifier") not in existing:
+                                    result.assets.append(AssetEntry(
+                                        identifier=asset_data.get("identifier", ""),
+                                        asset_type=asset_data.get("asset_type", "domain"),
+                                        scope_status=asset_data.get("scope_status", "UNCLEAR"),
+                                        confidence=float(asset_data.get("confidence", 50)),
+                                    ))
+                                    if asset_data.get("scope_status") == "IN_SCOPE":
+                                        result.in_scope_domains.append(asset_data.get("identifier", ""))
+                        # Add AI findings to metadata
+                        result.errors.append(f"AI enhanced: {self.llm_provider.provider_name}")
+                except Exception as e:
+                    result.errors.append(f"AI analysis enhancement failed: {str(e)[:80]}")
+            return result
         finally:
             await self.agent_1.close()
 
@@ -224,8 +324,9 @@ class BugBountyOrchestrator:
             self.agent_2.load_program_policy(result.program_intel)
             result.policy_rules = self.agent_2.custom_rules
 
-    def _evaluate_findings(self, result: BugBountyPipelineResult):
+    async def _evaluate_findings(self, result: BugBountyPipelineResult):
         """Run the 12-phase Policy Decision Engine on all scan findings.
+        Phase 5 Deep: Now async with LLM-powered decision phases.
         Stores ALLOW/REVIEW/REJECT decisions and detailed output.
         """
         result.policy_decisions = []
@@ -243,7 +344,7 @@ class BugBountyOrchestrator:
                 "impact": getattr(test, 'impact', ''),
                 "reproduction_steps": getattr(test, 'reproduction_steps', []),
             }
-            decision = self.agent_2.evaluate(finding)
+            decision = await self.agent_2.evaluate(finding)
             result.policy_decisions.append({
                 "finding_title": finding["title"],
                 "finding_type": finding["type"],
@@ -349,8 +450,76 @@ class BugBountyOrchestrator:
             })
 
     async def _run_agent_4(self, target: str) -> PassiveIntelResult:
-        """Agent 4: Passive intelligence with full 14-phase OSINT analysis."""
-        return await self.agent_4.gather(target)
+        """Agent 4: Passive intelligence with full 14-phase OSINT analysis.
+        Uses all available passive tools (Amass, Sublist3r, Knockpy, dnscan, gau, waybackurls, subfinder)
+        via AgentToolIntegration and feeds real tool results into AI reasoning.
+
+        Phase 3: Writes results to shared AgentMemory so downstream agents (5-10)
+        can benefit from upstream OSINT intelligence.
+
+        Phase 4: Enriches OSINT with external data sources (Shodan, Censys, SecurityTrails, URLScan)."""
+        from ..agent_tool_integration import get_agent_tool_integration
+        integration = get_agent_tool_integration()
+
+        # Rate-limit external tool API calls
+        wait = await self.rate_limiter.acquire(tokens=2.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        tool_report = await integration.run_for_agent_4(target)
+
+        wait = await self.rate_limiter.acquire(tokens=1.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        result = await self.agent_4.gather(target)
+
+        # Phase 2: Feed real tool results into AI reasoning context
+        tool_data = tool_report.to_dict() if hasattr(tool_report, 'to_dict') else {}
+        result.tool_integration_findings = tool_data
+        result.tools_executed = len(tool_report.tools_executed)
+        result.tool_findings_count = tool_report.total_findings
+
+        # Provide tool execution details to AI reasoning
+        tool_details = []
+        for te in tool_report.tools_executed:
+            tool_details.append({
+                "tool": te.tool_name,
+                "findings_count": len(te.findings),
+                "execution_time": getattr(te, 'execution_time', 0),
+                "status": getattr(te, 'status', 'unknown'),
+            })
+        result.downstream_guidance["tool_execution_details"] = tool_details
+
+        # Phase 3: Write Agent 4 results to shared memory for downstream agents
+        if self.memory:
+            try:
+                # Record discovered assets
+                for asset_entry in result.assets:
+                    self.memory.record_asset(
+                        source="agent_4",
+                        asset_name=asset_entry.get("asset", ""),
+                        asset_type=asset_entry.get("asset_type", "UNKNOWN"),
+                        confidence=asset_entry.get("confidence", 0.5),
+                        metadata={"evidence": asset_entry.get("evidence", [])[:3]},
+                    )
+                # Record priority targets
+                for target_name in result.recommended_priority_targets:
+                    self.memory.record_priority_target(
+                        source="agent_4", target=target_name, score=70,
+                    )
+                # Record subdomains in memory
+                for sub in result.subdomains:
+                    self.memory.record_subdomain("agent_4", target, sub)
+                # Record historical URLs
+                for url in result.archived_urls:
+                    self.memory.record_historical_url("agent_4", url)
+                # Record ownership
+                for asset_entry in result.assets:
+                    ownership = asset_entry.get("ownership", "UNKNOWN_OWNER")
+                    self.memory.record_ownership("agent_4", asset_entry.get("asset", ""), ownership)
+            except Exception:
+                pass
+
+        return result
 
     def _apply_osint_downstream_guidance(self, result: BugBountyPipelineResult):
         """Use OSINT intelligence from Agent 4 to guide downstream agents (Agents 5-10).
@@ -433,12 +602,85 @@ class BugBountyOrchestrator:
             result.downstream_guidance["historical_context"] = list(set(historical_endpoints))[:10]
 
     async def _run_agent_5(self, target: str) -> ActiveEnumResult:
-        """Agent 5: Active enumeration."""
-        return await self.agent_5.enumerate(target)
+        """Agent 5: Active enumeration with all active tools.
+        Uses dirsearch, gobuster, wfuzz, ffuf, nmap, dnsx via AgentToolIntegration.
+        Feeds real tool findings into AI reasoning context."""
+        from ..agent_tool_integration import get_agent_tool_integration
+        integration = get_agent_tool_integration()
 
-    async def _run_agent_6(self, endpoint: str) -> List[TestResult]:
-        """Agent 6: Vulnerability scanning."""
-        return await self.agent_6.scan(endpoint)
+        # Rate-limit external tool API calls
+        wait = await self.rate_limiter.acquire(tokens=2.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        tool_report = await integration.run_for_agent_5(target)
+
+        wait = await self.rate_limiter.acquire(tokens=1.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        result = await self.agent_5.enumerate(target)
+
+        tool_data = tool_report.to_dict() if hasattr(tool_report, 'to_dict') else {}
+        result.tool_integration_findings = tool_data
+        result.tools_executed = len(tool_report.tools_executed)
+        result.tool_findings_count = tool_report.total_findings
+
+        # Store tool execution details for downstream AI reasoning
+        result.tool_execution_details = [
+            {
+                "tool": te.tool_name,
+                "findings_count": len(te.findings),
+                "status": getattr(te, 'status', 'unknown'),
+            }
+            for te in tool_report.tools_executed
+        ]
+
+        return result
+
+    async def _run_agent_6(self, endpoint: str, test_types: Optional[List[str]] = None) -> List[TestResult]:
+        """Agent 6: Vulnerability scanning using all available tools.
+
+        Phase 2: Feeds real tool findings (nuclei, sqlmap, dalfox, corstest, wpscan, cmsmap)
+        directly into the agent's 11-phase scanning pipeline for AI-powered analysis.
+        Every tool finding includes: tool name, severity, raw output, endpoint.
+
+        test_types limits which vuln types to check for deduplication.
+        """
+        from ..agent_tool_integration import get_agent_tool_integration
+        integration = get_agent_tool_integration()
+
+        # Rate-limit external tool API calls
+        wait = await self.rate_limiter.acquire(tokens=3.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        tool_report = await integration.run_for_agent_6(endpoint)
+
+        wait = await self.rate_limiter.acquire(tokens=1.0)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        result = await self.agent_6.scan(endpoint, test_types=test_types)
+
+        # Phase 2: Integrate real tool findings as evidence for AI reasoning
+        for tr in tool_report.tools_executed:
+            for finding in tr.findings:
+                finding_severity = str(finding.get("severity", finding.get("confidence", "")))
+                is_vulnerable = finding_severity.upper() in ("CRITICAL", "HIGH", "MEDIUM")
+                finding_title = finding.get("title", finding.get("message", finding.get("issue", str(finding)[:100])))
+                result.append(TestResult(
+                    target=endpoint,
+                    test_type=f"tool_{tr.tool_name}",
+                    vulnerable=is_vulnerable,
+                    description=f"[{tr.tool_name}] {finding_title}",
+                    evidence=finding,
+                    severity="high" if finding_severity.upper() == "CRITICAL" else "medium",
+                    confidence=0.8 if is_vulnerable else 0.3,
+                    # Feed raw tool output into AI reasoning context
+                    raw_artifacts=[f"Tool: {tr.tool_name}", f"Raw: {str(finding)[:200]}"],
+                ))
+
+        # Store tool integration data for downstream use
+        result.tool_integration = tool_report.to_dict() if hasattr(tool_report, 'to_dict') else {}
+
+        return result
 
     async def _run_agent_7(self, finding: Dict[str, Any]) -> ValidationResult:
         """Agent 7: Validation engine."""
@@ -587,6 +829,97 @@ class BugBountyOrchestrator:
                 pass
 
         return await self.agent_10.generate_report(finding, analysis_dict, poc_dict)
+
+    def _scan_folder_files(self, folder_files: Dict[str, str]) -> List[Dict[str, Any]]:
+        """Scan uploaded folder files for common security issues.
+        Detects hardcoded secrets, API keys, SQL injection patterns,
+        command injection, insecure configs, and other common vulnerabilities.
+        """
+        findings: List[Dict[str, Any]] = []
+        seen = set()
+
+        # Patterns to scan for
+        secret_patterns = [
+            (r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)\s*[:=]\s*["\']?[A-Za-z0-9_\-]{16,}["\']?', 'Hardcoded API Key', 'HIGH'),
+            (r'(?i)(?:secret|token|auth[_-]?token|access[_-]?token|bearer)\s*[:=]\s*["\']?[A-Za-z0-9_\-.]{20,}["\']?', 'Hardcoded Secret/Token', 'CRITICAL'),
+            (r'(?i)password\s*[:=]\s*["\'][^"\']+["\']', 'Hardcoded Password', 'CRITICAL'),
+            (r'(?i)(?:aws[_-]?access[_-]?key[_-]?id|aws[_-]?secret[_-]?access[_-]?key)\s*[:=]\s*["\']?[A-Z0-9]{16,}["\']?', 'AWS Credential', 'CRITICAL'),
+            (r'(?i)(?:sk_live_|pk_live_|sk_test_|pk_test_)[A-Za-z0-9]{10,}', 'Stripe API Key', 'CRITICAL'),
+            (r'(?i)(?:ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{36}', 'GitHub Token', 'CRITICAL'),
+            (r'(?i)(?:xox[parb]-)[A-Za-z0-9\-]{10,}', 'Slack Token', 'CRITICAL'),
+            (r'(?i)(?:-----BEGIN\s?(?:RSA\s)?PRIVATE\s?KEY-----)', 'Private Key Embedded', 'CRITICAL'),
+            (r'(?i)(?:mongodb\+srv|postgresql|mysql|redis|amqp)://[^\s"]+(?:@)[^\s"]+', 'Database Connection String', 'CRITICAL'),
+            (r'(?i)(?:JWT|jwt)\s*[:=]\s*["\']?eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}["\']?', 'JWT Token Hardcoded', 'HIGH'),
+            (r'(?i)-----BEGIN\s?CERTIFICATE-----', 'Certificate Embedded', 'MEDIUM'),
+        ]
+
+        vuln_patterns = [
+            (r'(?i)(?:exec|eval|system|popen|subprocess\.call|subprocess\.Popen|os\.system)\s*\(', 'Command Injection (dynamic execution)', 'HIGH'),
+            (r'(?i)(?:exec|execute|sp_executesql|raw_query|nativeQuery)\s*\([^)]*\+', 'SQL Injection (string concatenation)', 'HIGH'),
+            (r'(?i)(?:SELECT|INSERT|UPDATE|DELETE)\s+.*\+\s*"', 'SQL Injection (query concatenation)', 'HIGH'),
+            (r'(?i)(?:innerHTML|outerHTML|dangerouslySetInnerHTML|v-html)\s*[:=]', 'XSS (HTML injection)', 'HIGH'),
+            (r'(?i)(?:pickle\.loads?|yaml\.load\s*\(|marshal\.loads?)', 'Insecure Deserialization', 'HIGH'),
+            (r'(?i)(?:sprintf|format_string|%s\s*%s|%x\s*%x)', 'Format String Vulnerability', 'MEDIUM'),
+            (r'(?i)(?:allow_url_include|allow_url_fopen)\s*=\s*(?:on|true|1)', 'Insecure PHP Config', 'HIGH'),
+            (r'(?i)(?:DEBUG|debug)\s*[:=]\s*(?:True|true|1)', 'Debug Mode Enabled', 'MEDIUM'),
+            (r'(?i)(?:CORS|Access-Control-Allow-Origin)\s*[:=]\s*["\']?\*["\']?', 'Permissive CORS', 'MEDIUM'),
+            (r'(?i)(?:password|passwd|pwd)\s*=\s*["\'][^"\']+["\']', 'Hardcoded Credential', 'HIGH'),
+        ]
+
+        for filepath, content in folder_files.items():
+            if not content or len(content) > 100000:
+                continue
+            lines = content.split('\n')
+            for i, line in enumerate(lines, 1):
+                stripped = line.strip()
+                if not stripped or stripped.startswith(('#', '//', '/*', '*', '<!--')):
+                    continue
+
+                # Check secret patterns
+                for pattern, title, severity in secret_patterns:
+                    match = re.search(pattern, stripped)
+                    if match:
+                        sig = f"{title}:{filepath}:{match.group()[:30]}"
+                        if sig not in seen:
+                            seen.add(sig)
+                            findings.append({
+                                "title": title,
+                                "severity": severity,
+                                "type": "secret_leak",
+                                "file": filepath,
+                                "line": i,
+                                "match": match.group()[:60],
+                                "description": f"Potential {title.lower()} detected in {filepath} on line {i}",
+                                "evidence": f"Line {i}: {stripped[:120]}",
+                                "confidence": 0.8,
+                            })
+                        break
+
+                # Check vulnerability patterns
+                for pattern, title, severity in vuln_patterns:
+                    match = re.search(pattern, stripped)
+                    if match:
+                        sig = f"{title}:{filepath}:{match.group()[:30]}"
+                        if sig not in seen:
+                            seen.add(sig)
+                            findings.append({
+                                "title": title,
+                                "severity": severity,
+                                "type": "vulnerability",
+                                "file": filepath,
+                                "line": i,
+                                "match": match.group()[:60],
+                                "description": f"Potential {title.lower()} pattern in {filepath} on line {i}",
+                                "evidence": f"Line {i}: {stripped[:120]}",
+                                "confidence": 0.6,
+                            })
+                        break
+
+        # Sort by severity (CRITICAL first)
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        findings.sort(key=lambda f: severity_order.get(f["severity"], 99))
+
+        return findings
 
     def get_summary(self, result: BugBountyPipelineResult) -> Dict[str, Any]:
         """Get a human-readable summary of pipeline results."""

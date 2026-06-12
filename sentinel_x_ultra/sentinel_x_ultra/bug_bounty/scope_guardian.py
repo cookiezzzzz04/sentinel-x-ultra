@@ -24,7 +24,9 @@ Default behavior is DENY / BLOCK.
  12. Hallucination Prevention
 """
 
+import asyncio
 import ipaddress
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -242,11 +244,13 @@ class ScopeGuardianAgent:
     When authorized: ALLOW.
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
         # Scope lists
         self.in_scope_domains: List[str] = []
         self.in_scope_wildcards: List[str] = []
         self.out_of_scope_domains: List[str] = []
+        self.llm_provider = llm_provider
+        self.memory = memory
         self.in_scope_cidrs: List[ipaddress.IPv4Network] = []
         self.in_scope_urls: List[str] = []
         self.out_of_scope_urls: List[str] = []
@@ -714,7 +718,53 @@ class ScopeGuardianAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _phase10_risk(self, domain: str, ownership: OwnershipStatus, scope_match: AuthorizationState, output: ScopeAuthorization) -> RiskLevel:
-        """Evaluate how likely this target is to be unauthorized."""
+        """Evaluate how likely this target is to be unauthorized.
+
+        Phase 5 Deep: Uses LLM for nuanced risk assessment beyond
+        simple scoring heuristics. Falls back to deterministic scoring.
+        """
+        # Phase 5 Deep: Try LLM for nuanced risk assessment
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"Assess the risk of misauthorization for this target.\n\n"
+                    f"Target: {domain}\n"
+                    f"Ownership: {ownership.value}\n"
+                    f"Scope Match: {scope_match.value}\n"
+                    f"Uncertainties: {len(output.uncertainties)}\n"
+                    f"Policy Restrictions: {bool(output.policy_restrictions)}\n\n"
+                    f"Return ONLY a JSON object: {{\"risk_level\": \"LOW\" or \"MEDIUM\" or \"HIGH\", "
+                    f"\"reasoning\": \"...\"}}"
+                )
+                # Try async call safely from both sync and async contexts
+                try:
+                    result = asyncio.run(
+                        self.llm_provider.reason_structured(prompt, temperature=0.1)
+                    )
+                except RuntimeError:
+                    # Event loop already running — schedule and wait
+                    import threading
+                    result = None
+                    def _run():
+                        nonlocal result
+                        result = asyncio.run(
+                            self.llm_provider.reason_structured(prompt, temperature=0.1)
+                        )
+                    t = threading.Thread(target=_run)
+                    t.start()
+                    t.join(timeout=10)
+                if isinstance(result, dict):
+                    risk = result.get("risk_level", "").upper()
+                    if risk == "HIGH":
+                        return RiskLevel.HIGH
+                    elif risk == "MEDIUM":
+                        return RiskLevel.MEDIUM
+                    elif risk == "LOW":
+                        return RiskLevel.LOW
+            except Exception:
+                pass
+
+        # Fallback: deterministic scoring
         risk_score = 0
 
         # Ownership risk
@@ -745,7 +795,11 @@ class ScopeGuardianAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _phase11_contradictions(self, domain: str, path: str, output: ScopeAuthorization) -> List[str]:
-        """Identify contradictory scope/policy rules."""
+        """Identify contradictory scope/policy rules.
+
+        Phase 5 Deep: Uses LLM for semantic contradiction detection beyond
+        simple list membership checks.
+        """
         contradictions: List[str] = []
 
         # Check if domain appears both in-scope and out-of-scope
@@ -765,6 +819,48 @@ class ScopeGuardianAgent:
         # Check policy contradictions
         if output.policy_restrictions and output.scope_status == "IN_SCOPE":
             contradictions.append(f"Policy restrictions exist despite in-scope status — may create authorization conflict")
+
+        # Phase 5 Deep: Use LLM for semantic contradiction detection
+        if self.llm_provider and self.llm_provider.is_available:
+            try:
+                prompt = (
+                    f"Analyze this target for scope/policy contradictions.\n\n"
+                    f"Domain: {domain}\n"
+                    f"Path: {path}\n"
+                    f"Scope Status: {output.scope_status}\n"
+                    f"Ownership: {output.ownership_status}\n"
+                    f"Policy Restrictions: {output.policy_restrictions}\n"
+                    f"In-Scope Domains: {self.in_scope_domains[:10]}\n"
+                    f"Out-of-Scope Domains: {self.out_of_scope_domains[:10]}\n\n"
+                    f"Return ONLY a JSON array of strings describing any contradictions. Empty array [] if none."
+                )
+                # Try async call safely from both sync and async contexts
+                try:
+                    llm_result = asyncio.run(
+                        self.llm_provider.reason_structured(prompt, temperature=0.1)
+                    )
+                except RuntimeError:
+                    # Event loop already running — use separate thread
+                    import threading
+                    llm_result = None
+                    def _run():
+                        nonlocal llm_result
+                        llm_result = asyncio.run(
+                            self.llm_provider.reason_structured(prompt, temperature=0.1)
+                        )
+                    t = threading.Thread(target=_run)
+                    t.start()
+                    t.join(timeout=15)
+                if isinstance(llm_result, list):
+                    for c in llm_result:
+                        if isinstance(c, str) and c not in contradictions:
+                            contradictions.append(c)
+                elif isinstance(llm_result, dict):
+                    for c in llm_result.get("contradictions", []):
+                        if isinstance(c, str) and c not in contradictions:
+                            contradictions.append(c)
+            except Exception:
+                pass
 
         return contradictions
 

@@ -108,6 +108,16 @@ class GobusterTool:
             except Exception:
                 pass
         
+        # Check ~/.sentinelx/tools/ first
+        sentinelx_path = os.path.join(os.path.expanduser('~/.sentinelx/tools'), 'gobuster')
+        if os.path.exists(sentinelx_path):
+            self._path_cache = sentinelx_path
+            return sentinelx_path
+        sentinelx_path_exe = os.path.join(os.path.expanduser('~/.sentinelx/tools'), 'gobuster.exe')
+        if os.path.exists(sentinelx_path_exe):
+            self._path_cache = sentinelx_path_exe
+            return sentinelx_path_exe
+        
         # Check Windows installation paths
         import os as os_module
         # Try HOME or USERPROFILE environment variables for proper expansion

@@ -173,6 +173,12 @@ class ActiveEnumResult:
     downstream_guidance: Dict[str, Any] = field(default_factory=dict)
     phases_run: List[str] = field(default_factory=list)
 
+    # Phase 2: Real Tool Integration — stores tool execution metadata
+    tool_execution_details: List[Dict[str, Any]] = field(default_factory=list)
+    tool_integration_findings: Dict[str, Any] = field(default_factory=dict)
+    tools_executed: int = 0
+    tool_findings_count: int = 0
+
     # Convenience aliases for orchestrator compatibility
     @property
     def target(self) -> str:
@@ -273,8 +279,10 @@ class ActiveEnumerationAgent:
      14.  Hallucination Prevention
     """
 
-    def __init__(self):
+    def __init__(self, llm_provider=None, memory=None):
         self.max_requests_per_second = 10
+        self.llm_provider = llm_provider
+        self.memory = memory
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API
@@ -304,8 +312,8 @@ class ActiveEnumerationAgent:
         self._phase3_ownership(domain, result)
         phases_run.append("ownership_verification")
 
-        # Phase 4: Business Criticality Assessment
-        self._phase4_criticality(domain, result)
+        # Phase 4: Business Criticality Assessment (async — Phase 5 Deep LLM)
+        await self._phase4_criticality(domain, result)
         phases_run.append("criticality_assessment")
 
         # Phase 5: Exposure Assessment
@@ -332,8 +340,8 @@ class ActiveEnumerationAgent:
         self._phase10_gaps(domain, result)
         phases_run.append("gap_analysis")
 
-        # Phase 11: Adversarial Review
-        self._phase11_adversarial(domain, result)
+        # Phase 11: Adversarial Review (async — Phase 5 Deep LLM)
+        await self._phase11_adversarial(domain, result)
         phases_run.append("adversarial_review")
 
         # Phase 12: Priority Scoring
@@ -531,18 +539,12 @@ class ActiveEnumerationAgent:
     # PHASE 4 — BUSINESS CRITICALITY ASSESSMENT (0-100)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase4_criticality(self, domain: str, result: ActiveEnumResult):
-        """Assess business criticality (0-100).
+    async def _phase4_criticality(self, domain: str, result: ActiveEnumResult):
+        """Assess business criticality (0-100) with AI-powered context awareness.
 
-        Factors:
-        - User data exposure
-        - Administrative capability
-        - Authentication significance
-        - Financial significance
-        - Operational significance
-        - Internal system access
-
-        CRITICAL 90-100 | HIGH 70-89 | MEDIUM 40-69 | LOW 0-39
+        Phase 5 Deep: Uses LLM for nuanced criticality assessment based on asset
+        name patterns, technology stack context, and attack surface intelligence.
+        Falls back to deterministic scoring.
         """
         for analysis in result.assets_analyzed:
             asset_name = analysis.asset_name
@@ -550,56 +552,59 @@ class ActiveEnumerationAgent:
             score = 50  # Baseline
             reasoning = []
 
-            # User data exposure
-            if any(kw in asset_name.lower() for kw in ("user", "profile", "account", "customer", "member")):
-                score += 20
-                reasoning.append("User data exposure: handles personally identifiable information")
+            # Phase 5 Deep: Try LLM for context-aware scoring
+            if self.llm_provider and self.llm_provider.is_available:
+                try:
+                    prompt = (
+                        f"Assess the business criticality (0-100) of this asset for bug bounty testing.\n\n"
+                        f"Asset Name: {asset_name}\n"
+                        f"Asset Type: {asset_type}\n"
+                        f"Domain: {domain}\n\n"
+                        f"Consider: user data exposure, admin capability, auth significance, "
+                        f"financial impact, operational role, internal system access, API exposure.\n\n"
+                        f"Return ONLY an integer 0-100."
+                    )
+                    response = await self.llm_provider.reason(prompt, temperature=0.1)
+                    # Extract number from response
+                    import re
+                    numbers = re.findall(r'\b\d{1,3}\b', response)
+                    for num_str in numbers:
+                        num = int(num_str)
+                        if 0 <= num <= 100:
+                            score = num
+                            analysis.reasoning.append(f"AI-powered criticality assessment: {score}/100")
+                            break
+                except Exception:
+                    pass
 
-            # Administrative capability
-            if asset_type == AssetClassification.ADMIN_INTERFACE.value:
-                score += 25
-                reasoning.append("Administrative interface: potential access to full system control")
-            elif any(kw in asset_name.lower() for kw in ("admin", "backoffice", "cpanel", "panel")):
-                score += 15
-                reasoning.append("Administrative functionality detected")
+            if score == 50:  # Fallback: deterministic scoring
+                # User data exposure
+                if any(kw in asset_name.lower() for kw in ("user", "profile", "account", "customer", "member")):
+                    score += 20
+                    reasoning.append("User data exposure: handles personally identifiable information")
+                if asset_type == AssetClassification.ADMIN_INTERFACE.value:
+                    score += 25
+                elif any(kw in asset_name.lower() for kw in ("admin", "backoffice", "cpanel", "panel")):
+                    score += 15
+                if asset_type == AssetClassification.AUTH_SYSTEM.value:
+                    score += 25
+                elif any(kw in asset_name.lower() for kw in ("auth", "login", "sso", "token")):
+                    score += 15
+                if asset_type in (AssetClassification.API.value, AssetClassification.MOBILE_BACKEND.value):
+                    score += 15
+                if any(kw in asset_name.lower() for kw in ("pay", "billing", "checkout", "order", "invoice", "finance")):
+                    score += 20
+                if asset_type == AssetClassification.DOMAIN.value and asset_name == domain:
+                    score += 15
+                if any(kw in asset_name.lower() for kw in ("monitor", "alert", "deploy", "build", "ci", "jenkins")):
+                    score += 15
+                if any(kw in asset_name.lower() for kw in ("internal", "corp", "vpn", "intranet", "ldap", "directory")):
+                    score += 20
+                if asset_type == AssetClassification.CLOUD_RESOURCE.value:
+                    score += 10
 
-            # Authentication significance
-            if asset_type == AssetClassification.AUTH_SYSTEM.value:
-                score += 25
-                reasoning.append("Authentication system: gateway to all protected functionality")
-            elif any(kw in asset_name.lower() for kw in ("auth", "login", "sso", "token")):
-                score += 15
-                reasoning.append("Authentication-related endpoint")
+                score = max(0, min(100, score))
 
-            # API exposure
-            if asset_type in (AssetClassification.API.value, AssetClassification.MOBILE_BACKEND.value):
-                score += 15
-                reasoning.append("API endpoint: likely mediates access to backend systems and data")
-
-            # Financial significance
-            if any(kw in asset_name.lower() for kw in ("pay", "billing", "checkout", "order", "invoice", "finance")):
-                score += 20
-                reasoning.append("Financial system: handles monetary transactions or billing data")
-
-            # Operational significance
-            if asset_type == AssetClassification.DOMAIN.value and asset_name == domain:
-                score += 15
-                reasoning.append("Primary domain: core operational asset")
-            if any(kw in asset_name.lower() for kw in ("monitor", "alert", "deploy", "build", "ci", "jenkins")):
-                score += 15
-                reasoning.append("Operational infrastructure: CI/CD, monitoring, or deployment")
-
-            # Internal system access
-            if any(kw in asset_name.lower() for kw in ("internal", "corp", "vpn", "intranet", "ldap", "directory")):
-                score += 20
-                reasoning.append("Internal system access: potential pivot point to internal network")
-
-            # Cloud resources
-            if asset_type == AssetClassification.CLOUD_RESOURCE.value:
-                score += 10
-                reasoning.append("Cloud resource: potential misconfiguration exposure")
-
-            # Cap and classify
             score = max(0, min(100, score))
             analysis.criticality_score = score
 
@@ -993,24 +998,50 @@ class ActiveEnumerationAgent:
     # PHASE 11 — ADVERSARIAL REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase11_adversarial(self, domain: str, result: ActiveEnumResult):
-        """Challenge every major conclusion.
+    async def _phase11_adversarial(self, domain: str, result: ActiveEnumResult):
+        """Challenge every major conclusion with AI-powered adversarial reasoning.
 
-        Ask:
-        - Could ownership be incorrect?
-        - Could evidence be outdated?
-        - Could the asset be misclassified?
-        - Could this be a duplicate?
-        - Could this belong to a third party?
+        Phase 5 Deep: Uses LLM to generate sophisticated challenges that go beyond
+        pattern matching — understanding context, technology relationships, and
+        common attacker perspectives.
 
-        Reduce confidence when uncertainty remains.
+        Falls back to deterministic challenges.
         """
         for analysis in result.assets_analyzed:
             asset_name = analysis.asset_name
             challenges = []
             adjustments = 0.0
 
-            # Challenge: Could ownership be incorrect?
+            # Phase 5 Deep: Try LLM for adversarial challenge generation
+            if self.llm_provider and self.llm_provider.is_available:
+                try:
+                    prompt = (
+                        f"Generate adversarial challenges for this asset analysis.\n\n"
+                        f"Asset: {asset_name}\n"
+                        f"Type: {analysis.asset_type}\n"
+                        f"Ownership: {analysis.ownership_status}\n"
+                        f"Confidence: {analysis.asset_confidence:.0%}\n"
+                        f"Criticality: {analysis.criticality_score}\n"
+                        f"Exposure: {analysis.exposure_level}\n\n"
+                        f"Think like an attacker reviewing this analysis. What assumptions were made? "
+                        f"What could be wrong? Where is the weakest reasoning?\n\n"
+                        f"Return ONLY a JSON array of strings, each being a specific challenge."
+                    )
+                    llm_result = await self.llm_provider.reason_structured(prompt, temperature=0.4)
+                    if isinstance(llm_result, list):
+                        for c in llm_result:
+                            if isinstance(c, str):
+                                challenges.append(c)
+                                adjustments -= 0.03  # Each LLM challenge reduces confidence slightly
+                    elif isinstance(llm_result, dict):
+                        for c in llm_result.get("challenges", []):
+                            if isinstance(c, str):
+                                challenges.append(c)
+                                adjustments -= 0.03
+                except Exception:
+                    pass
+
+            # Also apply deterministic challenges
             if analysis.ownership_status == OwnershipStatus.LIKELY_OWNER.value:
                 challenges.append("Ownership is LIKELY but not VERIFIED — could belong to a different entity")
                 adjustments -= 0.05
@@ -1021,27 +1052,13 @@ class ActiveEnumerationAgent:
                 challenges.append("Asset appears to be THIRD_PARTY — verify scope authorization")
                 adjustments -= 0.05
 
-            # Challenge: Could evidence be outdated?
             if asset_name != domain and asset_name.endswith(f".{domain}"):
                 challenges.append("Subdomain ownership inferred from domain relationship — could be outdated")
                 adjustments -= 0.03
 
-            # Challenge: Could the asset be misclassified?
             if analysis.asset_type == AssetClassification.OTHER.value:
                 challenges.append("Asset classified as OTHER — classification may be incorrect")
                 adjustments -= 0.05
-
-            # Challenge: Could this be a duplicate?
-            dupe_contradictions = [c for c in analysis.contradictions
-                                   if c.get("type") == "ownership"]
-            if dupe_contradictions:
-                challenges.append("Asset has ownership contradictions — may be misidentified")
-                adjustments -= 0.05
-
-            # Challenge: Could this belong to a third party?
-            if any(kw in asset_name.lower() for kw in ("cloudfront", "s3.amazonaws", "akamai", "fastly")):
-                challenges.append("Asset uses known third-party infrastructure — confirm ownership")
-                adjustments -= 0.10
 
             # Apply adjustments
             if adjustments < 0:
@@ -1050,9 +1067,7 @@ class ActiveEnumerationAgent:
                 analysis.reasoning.append(
                     f"Adversarial review: {len(challenges)} challenge(s) — confidence adjusted from {old_conf:.0%} to {analysis.asset_confidence:.0%}"
                 )
-
-                # Add recommended review actions
-                for challenge in challenges[:2]:
+                for challenge in challenges[:3]:
                     analysis.recommended_review_actions.append(f"Review: {challenge}")
 
     # ═══════════════════════════════════════════════════════════════════════════

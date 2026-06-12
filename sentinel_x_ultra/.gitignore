@@ -12,6 +12,7 @@ build/
 venv/
 env/
 ENV/
+*.local
 
 # Node / Frontend
 node_modules/
@@ -31,6 +32,8 @@ pnpm-debug.log*
 *.key
 config.local.json
 api_keys.json
+secrets.json
+*.secret
 
 # IDE
 .vscode/
@@ -40,6 +43,13 @@ api_keys.json
 *~
 .DS_Store
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# User tool installations (security tools install here)
+.sentinel/
+.sentinelx/
+tools/
 
 # Storage (user data, API keys, project memory)
 .sentinel-x/
@@ -65,6 +75,7 @@ findings.json
 *.log
 logs/
 nohup.out
+server_log.txt
 
 # Test artifacts
 .pytest_cache/
@@ -74,6 +85,9 @@ coverage.json
 .tox/
 .mypy_cache/
 .ruff_cache/
+
+# GitHub workflows
+.github/
 
 # OS
 .DS_Store
@@ -85,9 +99,17 @@ _wire_new_scan.py
 _patch_app.py
 patch_recon.py
 
-# Temp scripts created during interactive sessions (not part of the product)
+# Temp scripts created during interactive sessions
 run_test_scan.py
 seed_real_findings.py
 fix_fake_data.py
-server_log.txt
 nul
+test_*.py
+local_*.py
+dev_*.py
+
+# Backups
+*.bak
+temp/
+tmp/
+*.tmp

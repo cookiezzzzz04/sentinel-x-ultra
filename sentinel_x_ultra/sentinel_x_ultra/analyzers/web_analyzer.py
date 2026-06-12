@@ -27,11 +27,11 @@ class VulnerabilityType(str, Enum):
 
 
 class Severity(str, Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    INFORMATIONAL = "informational"
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    INFORMATIONAL = "INFORMATIONAL"
 
 
 @dataclass
@@ -368,11 +368,11 @@ class WebAnalyzer:
     def get_vulnerability_summary(self) -> dict[str, Any]:
         """Get a summary of discovered vulnerabilities."""
         by_severity = {
-            "critical": 0,
-            "high": 0,
-            "medium": 0,
-            "low": 0,
-            "informational": 0,
+            "CRITICAL": 0,
+            "HIGH": 0,
+            "MEDIUM": 0,
+            "LOW": 0,
+            "INFORMATIONAL": 0,
         }
 
         for vuln in self._vulnerabilities:

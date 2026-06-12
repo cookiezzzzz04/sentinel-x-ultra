@@ -1,0 +1,240 @@
+# ============================================================================
+# Sentinel-X Tool Configuration
+# ============================================================================
+# All tool paths are configurable. Default paths point to ~/.sentinelx/tools/
+# Tools can be enabled/disabled per project context.
+#
+# Usage:
+#   from sentinel_x_ultra.recon_tools import SENTINELX_TOOLS_DIR
+#   from sentinel_x_ultra import get_all_tool_status
+# ============================================================================
+
+# Global tools directory (also defined in recon_tools.py as SENTINELX_TOOLS_DIR)
+tools_dir: "~/.sentinelx/tools"
+
+# ============================================================================
+# RECONNAISSANCE & DISCOVERY TOOLS
+# ============================================================================
+
+# ---- Asset Discovery ----
+amass:
+  enabled: true
+  path: "~/.sentinelx/tools/amass"
+  description: "OWASP Amass - network mapping and subdomain enumeration"
+  install: "go install -v github.com/owasp-amass/amass/v3/...@master"
+
+sublist3r:
+  enabled: true
+  path: "~/.sentinelx/tools/sublist3r"
+  description: "OSINT subdomain enumeration tool"
+  install: "git clone https://github.com/aboul3la/Sublist3r.git ~/.sentinelx/tools/sublist3r"
+
+knockpy:
+  enabled: true
+  path: "~/.sentinelx/tools/knockpy"
+  description: "Knockpy subdomain discovery via dictionary"
+  install: "git clone https://github.com/guelfoweb/knock.git ~/.sentinelx/tools/knockpy"
+
+dnscan:
+  enabled: true
+  path: "~/.sentinelx/tools/dnscan"
+  description: "DNS brute force subdomain scanner"
+  install: "git clone https://github.com/rbsec/dnscan.git ~/.sentinelx/tools/dnscan"
+
+subfinder:
+  enabled: true
+  path: "~/.sentinelx/tools/subfinder"
+  description: "Passive subdomain enumeration by ProjectDiscovery"
+  install: "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+
+# ---- DNS Validation ----
+massdns:
+  enabled: true
+  path: "~/.sentinelx/tools/massdns"
+  description: "High-performance DNS resolver for bulk lookups"
+  install: "git clone https://github.com/blechschmidt/massdns.git ~/.sentinelx/tools/massdns && cd ~/.sentinelx/tools/massdns && make"
+
+# ---- Network Enumeration ----
+nmap:
+  enabled: true
+  path: "~/.sentinelx/tools/nmap"
+  description: "Network port scanner and service detection"
+  install: "https://nmap.org/download.html"
+
+# ---- Web Content Discovery ----
+dirsearch:
+  enabled: true
+  path: "~/.sentinelx/tools/dirsearch"
+  description: "Web path scanner and directory brute-forcer"
+  install: "git clone --depth 1 https://github.com/maurosoria/dirsearch.git ~/.sentinelx/tools/dirsearch"
+
+wfuzz:
+  enabled: true
+  path: "~/.sentinelx/tools/wfuzz"
+  description: "Web fuzzer for parameter/content discovery"
+  install: "pip install wfuzz || git clone https://github.com/xmendez/wfuzz.git ~/.sentinelx/tools/wfuzz"
+
+ffuf:
+  enabled: true
+  path: "~/.sentinelx/tools/ffuf"
+  description: "Fast web fuzzer (FUZZ)"
+  install: "go install github.com/ffuf/ffuf@latest"
+
+gobuster:
+  enabled: true
+  path: "~/.sentinelx/tools/gobuster"
+  description: "Directory/file/DNS busting tool"
+  install: "go install github.com/OJ/gobuster/v3@latest"
+
+# ---- Historical Discovery ----
+waybackurls:
+  enabled: true
+  path: "~/.sentinelx/tools/waybackurls"
+  description: "Fetch URLs from Wayback Machine"
+  install: "go install github.com/tomnomnom/waybackurls@latest"
+
+gau:
+  enabled: true
+  path: "~/.sentinelx/tools/gau"
+  description: "Get All URLs from AlienVault, Wayback, Common Crawl"
+  install: "go install github.com/lc/gau/v2/cmd/gau@latest"
+
+# ---- Probing ----
+httpx:
+  enabled: true
+  path: "~/.sentinelx/tools/httpx"
+  description: "HTTP probing and technology detection"
+  install: "go install github.com/projectdiscovery/httpx/cmd/httpx@latest"
+
+# ============================================================================
+# VISUAL & SOURCE ANALYSIS
+# ============================================================================
+
+# ---- Visual Recon ----
+eyewitness:
+  enabled: true
+  path: "~/.sentinelx/tools/eyewitness"
+  description: "Web application screenshot and visual recon"
+  install: "git clone https://github.com/FortyNorthSecurity/EyeWitness.git ~/.sentinelx/tools/eyewitness"
+
+# ---- Git Analysis ----
+gittools:
+  enabled: true
+  path: "~/.sentinelx/tools/gittools"
+  description: "Git repository reconnaissance and extraction"
+  install: "git clone https://github.com/internetwache/GitTools.git ~/.sentinelx/tools/gittools"
+
+git_secrets:
+  enabled: true
+  path: "~/.sentinelx/tools/git-secrets"
+  description: "Scan git repos for secrets and credentials"
+  install: "git clone https://github.com/awslabs/git-secrets.git ~/.sentinelx/tools/git-secrets"
+
+# ---- JavaScript Analysis ----
+retirejs:
+  enabled: true
+  path: "~/.sentinelx/tools/retirejs"
+  description: "JavaScript library vulnerability scanner"
+  install: "npm install -g retire"
+
+# ============================================================================
+# MOBILE & CMS ANALYSIS
+# ============================================================================
+
+# ---- Mobile Analysis ----
+mobsf:
+  enabled: true
+  path: "~/.sentinelx/tools/mobsf"
+  description: "Mobile Security Framework - static/dynamic APK analysis"
+  install: "git clone https://github.com/MobSF/Mobile-Security-Framework-MobSF.git ~/.sentinelx/tools/mobsf"
+
+apktool:
+  enabled: true
+  path: "~/.sentinelx/tools/apktool"
+  description: "APK reverse engineering and decompilation"
+  install: "https://ibotpeaches.github.io/Apktool/install/"
+
+# ---- CMS Analysis ----
+wpscan:
+  enabled: true
+  path: "~/.sentinelx/tools/wpscan"
+  description: "WordPress security scanner"
+  install: "https://github.com/wpscanteam/wpscan"
+  api_token: ""  # Set your WPScan API token here
+
+cmsmap:
+  enabled: true
+  path: "~/.sentinelx/tools/cmsmap"
+  description: "CMS detection and vulnerability scanner"
+  install: "git clone https://github.com/Dionach/CMSmap.git ~/.sentinelx/tools/cmsmap"
+
+# ============================================================================
+# VALIDATION & EXPLOITATION TOOLS
+# ============================================================================
+
+# ---- Vulnerability Scanning ----
+nuclei:
+  enabled: true
+  path: "~/.sentinelx/tools/nuclei"
+  description: "Template-based vulnerability scanner by ProjectDiscovery"
+  install: "go install github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest"
+
+dalfox:
+  enabled: true
+  path: "~/.sentinelx/tools/dalfox"
+  description: "XSS parameter analysis and scanning"
+  install: "go install github.com/hahwul/dalfox/v2@latest"
+
+sqlifinder:
+  enabled: true
+  path: "~/.sentinelx/tools/sqlifinder"
+  description: "SQL injection vulnerability finder"
+  install: "git clone https://github.com/americo/sqlifinder.git ~/.sentinelx/tools/sqlifinder"
+
+# ---- Brute Force ----
+hydra:
+  enabled: true
+  path: "~/.sentinelx/tools/hydra"
+  description: "THC-Hydra network login cracker"
+  install: "https://github.com/vanhauser-thc/thc-hydra"
+
+sqlmap:
+  enabled: true
+  path: "~/.sentinelx/tools/sqlmap"
+  description: "SQL injection automation tool"
+  install: "git clone --depth 1 https://github.com/sqlmapproject/sqlmap ~/.sentinelx/tools/sqlmap"
+
+# ---- CORS & Token Testing ----
+corstest:
+  enabled: true
+  path: "~/.sentinelx/tools/corstest"
+  description: "CORS misconfiguration testing"
+  install: "git clone https://github.com/RUB-NDS/CORStest.git ~/.sentinelx/tools/corstest || pip install cors-analyse"
+
+jwt_toolkit:
+  enabled: true
+  path: "internal"
+  description: "JWT token analysis (built-in payload-based)"
+  install: "Built-in (no installation required)"
+
+tko_subs:
+  enabled: true
+  path: "~/.sentinelx/tools/tko-subs"
+  description: "Subdomain takeover detection"
+  install: "go install github.com/anshumanbh/tko-subs@latest"
+
+# ============================================================================
+# PAYLOAD-BASED TOOLS (no external binary required)
+# ============================================================================
+
+xxe_tool:
+  enabled: true
+  path: "internal"
+  description: "XXE injection payload generator and tester"
+  install: "Built-in (no installation required)"
+
+deserialization_tool:
+  enabled: true
+  path: "internal"
+  description: "Insecure deserialization payload generator"
+  install: "Built-in (no installation required)"

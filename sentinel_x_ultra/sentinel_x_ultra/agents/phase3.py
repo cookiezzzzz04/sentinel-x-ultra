@@ -221,6 +221,16 @@ class ReconAgent(Phase3Agent):
             "services": [],
             "vulnerabilities": [],
         }
+        # Auto-use tool integration for enriched findings
+        try:
+            from ..agent_tool_integration import get_agent_tool_integration
+            integration = get_agent_tool_integration()
+            tool_report = await integration.scan_with_context("recon", target)
+            results["tool_integration"] = tool_report.to_dict() if hasattr(tool_report, "to_dict") else {}
+            results["tools_executed"] = len(tool_report.tools_executed) if hasattr(tool_report, "tools_executed") else 0
+            results["tool_findings"] = tool_report.total_findings if hasattr(tool_report, "total_findings") else 0
+        except Exception:
+            pass
 
         # Common high-risk ports to check
         high_risk_ports = {
