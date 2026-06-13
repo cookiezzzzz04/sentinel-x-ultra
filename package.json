@@ -15,10 +15,10 @@
       "ruff check --fix"
     ],
     "sentinel_x_ultra/frontend/src/**/*.{ts,tsx}": [
-      "node sentinel_x_ultra/frontend/node_modules/.bin/eslint --config sentinel_x_ultra/frontend/eslint.config.js --fix"
+      "sentinel_x_ultra/frontend/node_modules/.bin/eslint.cmd --config sentinel_x_ultra/frontend/eslint.config.js --fix"
     ],
     "sentinel_x_ultra/frontend/src/**/*.{ts,tsx,json,css,md}": [
-      "node sentinel_x_ultra/frontend/node_modules/.bin/prettier --write"
+      "sentinel_x_ultra/frontend/node_modules/.bin/prettier.cmd --write"
     ]
   }
 }

@@ -210,7 +210,12 @@ def get_recon_methodology() -> str:
 def get_tool_info() -> dict:
     """Return information about integrated reconnaissance tools."""
     return {
-        "bigbountyrecon":
+        "bigbountyrecon": {
+            "name": "BigBountyRecon",
+            "github": "https://github.com/Viralmaniar/BigBountyRecon",
+            "purpose": "Google Dorking reconnaissance (58 techniques)",
+            "installed_path": "~/.sentinelx/tools/BigBountyRecon/",
+        },
         "subfinder": {
             "name": "SubFinder",
             "github": "https://github.com/projectdiscovery/subfinder",
