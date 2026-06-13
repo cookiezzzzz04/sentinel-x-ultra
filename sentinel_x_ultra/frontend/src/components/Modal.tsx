@@ -1,31 +1,41 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react';
 
 interface ModalProps {
-  isOpen: boolean
-  onClose: () => void
-  title: string
-  children: React.ReactNode
-  width?: string
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  width?: string;
 }
 
 export function Modal({ isOpen, onClose, title, children, width = '520px' }: ModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isOpen) return
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    if (!isOpen) {
+      return;
     }
-    document.addEventListener('keydown', handleEsc)
-    return () => document.removeEventListener('keydown', handleEsc)
-  }, [isOpen, onClose])
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
 
-  if (!isOpen) return null
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div
       ref={overlayRef}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
+      onClick={(e) => {
+        if (e.target === overlayRef.current) {
+          onClose();
+        }
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -80,34 +90,48 @@ export function Modal({ isOpen, onClose, title, children, width = '520px' }: Mod
               justifyContent: 'center',
               transition: 'all 0.2s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,68,68,0.2)'; e.currentTarget.style.color = '#ff4444' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#888' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,68,68,0.2)';
+              e.currentTarget.style.color = '#ff4444';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              e.currentTarget.style.color = '#888';
+            }}
           >
             ✕
           </button>
         </div>
 
         {/* Content */}
-        <div style={{ padding: '24px', overflow: 'auto', flex: 1 }}>
-          {children}
-        </div>
+        <div style={{ padding: '24px', overflow: 'auto', flex: 1 }}>{children}</div>
       </div>
     </div>
-  )
+  );
 }
 
-export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Confirm', confirmColor = '#ff4444' }: {
-  isOpen: boolean
-  onClose: () => void
-  onConfirm: () => void
-  title: string
-  message: string
-  confirmLabel?: string
-  confirmColor?: string
+export function ConfirmDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  confirmColor = '#ff4444',
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  confirmColor?: string;
 }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} width="400px">
-      <p style={{ fontSize: '14px', color: '#888', marginBottom: '24px', lineHeight: '1.6' }}>{message}</p>
+      <p style={{ fontSize: '14px', color: '#888', marginBottom: '24px', lineHeight: '1.6' }}>
+        {message}
+      </p>
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
         <button
           onClick={onClose}
@@ -125,7 +149,10 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
           Cancel
         </button>
         <button
-          onClick={() => { onConfirm(); onClose() }}
+          onClick={() => {
+            onConfirm();
+            onClose();
+          }}
           style={{
             padding: '10px 20px',
             borderRadius: '8px',
@@ -141,5 +168,5 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
         </button>
       </div>
     </Modal>
-  )
+  );
 }

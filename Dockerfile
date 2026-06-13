@@ -52,6 +52,11 @@ COPY sentinel_x_ultra/pyproject.toml sentinel_x_ultra/README.md ./
 # Copy the built frontend from Stage 1
 COPY --from=frontend-builder /build/frontend/dist/ frontend/dist/
 
+# Copy entrypoint and tool installer
+COPY scripts/entrypoint.sh /entrypoint.sh
+COPY scripts/install_tools.sh /install_tools.sh
+RUN chmod +x /entrypoint.sh /install_tools.sh
+
 # Create data directory
 RUN mkdir -p /root/.sentinel-x
 
@@ -62,5 +67,6 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7860/api/health')" || exit 1
 
-# Default: start the web server
+# Default: start the web server via entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "sentinel_x_ultra.server:app", "--host", "0.0.0.0", "--port", "7860"]

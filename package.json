@@ -1,0 +1,24 @@
+{
+  "name": "sentinel-x-ultra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0"
+  },
+  "lint-staged": {
+    "sentinel_x_ultra/**/*.py": [
+      "ruff check --fix"
+    ],
+    "sentinel_x_ultra/frontend/src/**/*.{ts,tsx}": [
+      "node sentinel_x_ultra/frontend/node_modules/.bin/eslint --config sentinel_x_ultra/frontend/eslint.config.js --fix"
+    ],
+    "sentinel_x_ultra/frontend/src/**/*.{ts,tsx,json,css,md}": [
+      "node sentinel_x_ultra/frontend/node_modules/.bin/prettier --write"
+    ]
+  }
+}

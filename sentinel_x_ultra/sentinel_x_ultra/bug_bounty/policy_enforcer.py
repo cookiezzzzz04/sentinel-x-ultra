@@ -13,12 +13,12 @@ A false approval is more harmful than a false review.
 
 import asyncio
 import json
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
+
 from .url_parser import ProgramIntelligence
 from .webhook import WebhookManager
-
 
 # ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ class PolicyRule:
     allowed: bool  # True = accepted, False = rejected/blocked
     severity: str = "medium"
     notes: str = ""
-    cwe_ids: List[str] = field(default_factory=list)
+    cwe_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -85,12 +85,12 @@ class PolicyEnforcementResult:
     finding_type: str
     policy_allowed: bool
     reason: str
-    severity_override: Optional[str] = None
+    severity_override: str | None = None
     # New fields for richer information
     decision: PolicyDecision = PolicyDecision.ALLOW
     confidence: float = 0.0
     program_compliance_score: int = 0
-    detailed_output: Optional[Dict[str, Any]] = None
+    detailed_output: dict[str, Any] | None = None
 
 
 # ── Full Decision Output Schema ─────────────────────────────────────────────
@@ -112,20 +112,20 @@ class PolicyDecisionOutput:
     duplicate_risk: str = ""
 
     # Analysis details
-    policy_violations: List[str] = field(default_factory=list)
-    policy_citations: List[str] = field(default_factory=list)
-    supporting_evidence: List[str] = field(default_factory=list)
+    policy_violations: list[str] = field(default_factory=list)
+    policy_citations: list[str] = field(default_factory=list)
+    supporting_evidence: list[str] = field(default_factory=list)
 
     # Adversarial analysis
-    rejection_arguments: List[str] = field(default_factory=list)
-    triager_assessment: List[str] = field(default_factory=list)
+    rejection_arguments: list[str] = field(default_factory=list)
+    triager_assessment: list[str] = field(default_factory=list)
 
     # Integrity
-    uncertainties: List[str] = field(default_factory=list)
-    assumptions: List[str] = field(default_factory=list)
+    uncertainties: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
 
     # Final
-    reasoning: List[str] = field(default_factory=list)
+    reasoning: list[str] = field(default_factory=list)
     recommended_next_action: str = ""
 
 
@@ -184,11 +184,11 @@ class PolicyEnforcerAgent:
      12. Hallucination Prevention
     """
 
-    def __init__(self, webhook_manager: Optional[WebhookManager] = None, llm_provider=None, memory=None):
-        self.accepted_types: List[str] = list(ACCEPTED_VULN_TYPES)
-        self.rejected_types: List[str] = list(REJECTED_VULN_TYPES)
-        self.custom_rules: List[PolicyRule] = []
-        self.program_intel: Optional[ProgramIntelligence] = None
+    def __init__(self, webhook_manager: WebhookManager | None = None, llm_provider=None, memory=None):
+        self.accepted_types: list[str] = list(ACCEPTED_VULN_TYPES)
+        self.rejected_types: list[str] = list(REJECTED_VULN_TYPES)
+        self.custom_rules: list[PolicyRule] = []
+        self.program_intel: ProgramIntelligence | None = None
         self.webhook_manager = webhook_manager
         self.llm_provider = llm_provider
         self.memory = memory
@@ -221,7 +221,7 @@ class PolicyEnforcerAgent:
                 notes="Rejected per program policy",
             ))
 
-    async def check_finding(self, finding: Dict[str, Any]) -> PolicyEnforcementResult:
+    async def check_finding(self, finding: dict[str, Any]) -> PolicyEnforcementResult:
         """Check if a finding passes policy enforcement (legacy wrapper).
 
         Internally runs the full 12-phase pipeline and maps the result
@@ -246,19 +246,19 @@ class PolicyEnforcerAgent:
             detailed_output=self._output_to_dict(output),
         )
 
-    async def batch_check(self, findings: List[Dict[str, Any]]) -> List[PolicyEnforcementResult]:
+    async def batch_check(self, findings: list[dict[str, Any]]) -> list[PolicyEnforcementResult]:
         """Check multiple findings against policy."""
         results = []
         for f in findings:
             results.append(await self.check_finding(f))
         return results
 
-    async def filter_allowed(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def filter_allowed(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return only findings that pass policy (ALLOW only)."""
         results = await self.batch_check(findings)
         return [f for f, r in zip(findings, results) if r.decision == PolicyDecision.ALLOW]
 
-    async def get_rejected_report(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def get_rejected_report(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return report of why findings were rejected or sent to review."""
         results = await self.batch_check(findings)
         return [
@@ -275,7 +275,7 @@ class PolicyEnforcerAgent:
             for f, r in zip(findings, results) if r.decision != PolicyDecision.ALLOW
         ]
 
-    async def evaluate(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
+    async def evaluate(self, finding: dict[str, Any]) -> PolicyDecisionOutput:
         """Run the full 12-phase policy decision pipeline.
 
         Phase 5 Deep: Now async with LLM-powered phases.
@@ -297,7 +297,7 @@ class PolicyEnforcerAgent:
 
         return output
 
-    async def _fire_decision_webhook(self, finding: Dict[str, Any], output: PolicyDecisionOutput):
+    async def _fire_decision_webhook(self, finding: dict[str, Any], output: PolicyDecisionOutput):
         """Fire a webhook for the policy decision (async)."""
         if not self.webhook_manager:
             return
@@ -321,7 +321,7 @@ class PolicyEnforcerAgent:
     # FULL 12-PHASE PIPELINE
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _run_full_pipeline(self, finding: Dict[str, Any]) -> PolicyDecisionOutput:
+    async def _run_full_pipeline(self, finding: dict[str, Any]) -> PolicyDecisionOutput:
         """Execute all 12 phases in order. Short-circuits on REJECT.
 
         Phase 5 Deep: Phases 7, 8, 10, 11 now use async LLM reasoning.
@@ -438,7 +438,7 @@ class PolicyEnforcerAgent:
     # PHASE 1 — SCOPE VERIFICATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase1_scope(self, finding: Dict[str, Any]) -> ScopeStatus:
+    def _phase1_scope(self, finding: dict[str, Any]) -> ScopeStatus:
         """Verify: asset exists, asset identified, asset included in scope."""
         target = finding.get("target", finding.get("asset", "")).lower()
         endpoint = finding.get("endpoint", "").lower()
@@ -471,7 +471,7 @@ class PolicyEnforcerAgent:
     # PHASE 2 — ASSET ELIGIBILITY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase2_asset(self, finding: Dict[str, Any]) -> AssetEligibility:
+    def _phase2_asset(self, finding: dict[str, Any]) -> AssetEligibility:
         """Verify: asset is reportable, eligible, not explicitly excluded."""
         target = finding.get("target", finding.get("asset", "")).lower()
 
@@ -494,7 +494,7 @@ class PolicyEnforcerAgent:
     # PHASE 3 — TESTING RESTRICTION COMPLIANCE
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase3_testing(self, finding: Dict[str, Any]) -> TestingCompliance:
+    def _phase3_testing(self, finding: dict[str, Any]) -> TestingCompliance:
         """Determine whether testing violated restrictions."""
         method = finding.get("testing_method", finding.get("method", "")).lower()
         description = finding.get("description", "").lower()
@@ -517,7 +517,7 @@ class PolicyEnforcerAgent:
     # PHASE 4 — VULNERABILITY ELIGIBILITY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase4_vulnerability(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> VulnEligibility:
+    def _phase4_vulnerability(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> VulnEligibility:
         """Determine whether the vulnerability class is eligible.
         Also populates policy_citations per the citation requirement.
         """
@@ -557,7 +557,7 @@ class PolicyEnforcerAgent:
     # PHASE 5 — EVIDENCE SUFFICIENCY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase5_evidence(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> EvidenceTier:
+    def _phase5_evidence(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> EvidenceTier:
         """Evaluate evidence quality on a 5-tier scale.
         Populates supporting_evidence from the finding's evidence.
         """
@@ -608,7 +608,7 @@ class PolicyEnforcerAgent:
     # PHASE 6 — IMPACT SUFFICIENCY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase6_impact(self, finding: Dict[str, Any]) -> bool:
+    def _phase6_impact(self, finding: dict[str, Any]) -> bool:
         """Determine whether impact is demonstrated vs hypothetical."""
         impact = finding.get("impact", finding.get("business_impact", "")).lower()
         description = finding.get("description", "").lower()
@@ -647,7 +647,7 @@ class PolicyEnforcerAgent:
     # PHASE 7 — DUPLICATE RISK ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase7_duplicate(self, finding: Dict[str, Any]) -> DuplicateRisk:
+    async def _phase7_duplicate(self, finding: dict[str, Any]) -> DuplicateRisk:
         """Assess duplicate risk using AI reasoning + pattern checks.
 
         Phase 5 Deep: Uses LLM for semantic duplicate analysis against
@@ -701,14 +701,14 @@ class PolicyEnforcerAgent:
     # PHASE 8 — POLICY CONTRADICTION ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase8_contradictions(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+    async def _phase8_contradictions(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> list[str]:
         """Identify scope, restriction, policy, or reward conflicts.
         Per prompt: "If contradictions exist: REVIEW. Do not resolve conflicts through assumptions."
 
         Phase 5 Deep: Uses LLM for deeper semantic contradiction detection
         beyond simple list membership checks.
         """
-        contradictions: List[str] = []
+        contradictions: list[str] = []
         vuln_type = finding.get("type", "").lower().replace(" ", "_")
 
         # Check if vulnerability type is in both accepted and rejected lists
@@ -770,7 +770,7 @@ class PolicyEnforcerAgent:
 
     def _phase9_compliance_score(
         self,
-        finding: Dict[str, Any],
+        finding: dict[str, Any],
         scope: ScopeStatus,
         asset: AssetEligibility,
         testing: TestingCompliance,
@@ -821,13 +821,13 @@ class PolicyEnforcerAgent:
     # PHASE 10 — TRIAGER SIMULATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase10_triager(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+    async def _phase10_triager(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> list[str]:
         """Simulate an experienced bug bounty triager using LLM reasoning.
 
         Phase 5 Deep: Uses LLM to simulate a real human triager's perspective,
         providing nuanced assessment beyond compliance score thresholds.
         """
-        assessments: List[str] = []
+        assessments: list[str] = []
         vuln_type = finding.get("type", "").lower()
 
         # Phase 5 Deep: Use LLM for realistic triager simulation
@@ -908,13 +908,13 @@ class PolicyEnforcerAgent:
     # PHASE 11 — ADVERSE REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase11_adverse(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+    async def _phase11_adverse(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> list[str]:
         """Actively attempt to reject the finding using LLM-powered adversarial review.
 
         Phase 5 Deep: Uses LLM to generate sophisticated rejection arguments
         that a skeptical triager would raise.
         """
-        rejection_args: List[str] = []
+        rejection_args: list[str] = []
 
         # Phase 5 Deep: Use LLM for adversarial rejection analysis
         if self.llm_provider and self.llm_provider.is_available:
@@ -979,9 +979,9 @@ class PolicyEnforcerAgent:
     # PHASE 12 — HALLUCINATION PREVENTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase12_hallucination(self, finding: Dict[str, Any], output: PolicyDecisionOutput) -> List[str]:
+    def _phase12_hallucination(self, finding: dict[str, Any], output: PolicyDecisionOutput) -> list[str]:
         """Before every decision, verify evidence support for each claim."""
-        assumptions: List[str] = []
+        assumptions: list[str] = []
         description = finding.get("description", "")
 
         # Check for unsupported claims
@@ -1120,7 +1120,7 @@ class PolicyEnforcerAgent:
         return "REQUIRES_MANUAL_REVIEW — Insufficient information for automated decision"
 
     def _finalize_reject(
-        self, output: PolicyDecisionOutput, reason: str, phases_run: List[str]
+        self, output: PolicyDecisionOutput, reason: str, phases_run: list[str]
     ) -> PolicyDecisionOutput:
         """Short-circuit and return a REJECT decision with proportional confidence."""
         output.decision = PolicyDecision.REJECT
@@ -1163,7 +1163,7 @@ class PolicyEnforcerAgent:
 
         return " — ".join(reasons)
 
-    def _output_to_dict(self, output: PolicyDecisionOutput) -> Dict[str, Any]:
+    def _output_to_dict(self, output: PolicyDecisionOutput) -> dict[str, Any]:
         """Convert PolicyDecisionOutput to a serializable dict."""
         return {
             "decision": output.decision.value,

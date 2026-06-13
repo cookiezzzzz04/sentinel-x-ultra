@@ -61,8 +61,50 @@ else
     echo "  Go not found - skipping Go-based tools"
 fi
 
+# ============ JOHN THE RIPPER ============
+echo "[2/7] Installing John the Ripper..."
+
+JOHN_DIR="$TOOLS_DIR/john"
+if [ ! -f "$JOHN_DIR/run/john" ] && [ ! -f "$JOHN_DIR/john" ]; then
+    echo "  Downloading John the Ripper (bleeding-jumbo)..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install john-jumbo 2>/dev/null || {
+            echo "  Homebrew not available, cloning source..."
+            git clone --depth 1 https://github.com/openwall/john.git "$JOHN_DIR"
+            cd "$JOHN_DIR/src" && ./configure && make -s 2>&1 | tail -5
+        }
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get install -y john 2>/dev/null || {
+            echo "  apt not available, cloning source..."
+            git clone --depth 1 https://github.com/openwall/john.git "$JOHN_DIR"
+            cd "$JOHN_DIR/src" && ./configure && make -s 2>&1 | tail -5
+        }
+    else
+        git clone --depth 1 https://github.com/openwall/john.git "$JOHN_DIR"
+        if [ -f "$JOHN_DIR/src/configure" ]; then
+            cd "$JOHN_DIR/src" && ./configure && make -s 2>&1 | tail -5
+        fi
+    fi
+    echo "  John the Ripper installed to $JOHN_DIR"
+else
+    echo "  John the Ripper already installed"
+fi
+
+# Create a symlink or copy to tools root for easier detection
+if [ -f "$JOHN_DIR/run/john" ] && [ ! -f "$TOOLS_DIR/john" ]; then
+    ln -sf "$JOHN_DIR/run/john" "$TOOLS_DIR/john" 2>/dev/null || \
+    cp "$JOHN_DIR/run/john" "$TOOLS_DIR/john" 2>/dev/null || true
+fi
+
+# Download a small password list for John if not present
+if [ ! -f "$TOOLS_DIR/wordlist.txt" ]; then
+    echo "  Downloading common wordlist for John..."
+    curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt" -o "$TOOLS_DIR/wordlist.txt" 2>/dev/null || \
+    curl -sL "https://raw.githubusercontent.com/berzerk0/Probable-Wordlists/master/Real-Passwords/Top12Thousand-probable-v2.txt" -o "$TOOLS_DIR/wordlist.txt" 2>/dev/null || true
+fi
+
 # ============ GIT-BASED TOOLS ============
-echo "[2/6] Installing Git-based tools..."
+echo "[3/7] Installing Git-based tools..."
 
 # BigBountyRecon - Google Dorking (58 techniques)
 if [ ! -d "$TOOLS_DIR/BigBountyRecon" ]; then
@@ -97,7 +139,7 @@ else
 fi
 
 # ============ NUCLEI TEMPLATES ============
-echo "[3/6] Setting up Nuclei templates..."
+echo "[4/7] Setting up Nuclei templates..."
 
 NUCLEI_TEMPLATES_DIR="$HOME/nuclei-templates"
 if [ ! -d "$NUCLEI_TEMPLATES_DIR" ]; then
@@ -108,7 +150,7 @@ else
 fi
 
 # ============ WORDLISTS ============
-echo "[4/6] Setting up wordlists..."
+echo "[5/7] Setting up wordlists..."
 
 WORDLISTS_DIR="$TOOLS_DIR/wordlists"
 mkdir -p "$WORDLISTS_DIR"
@@ -125,7 +167,7 @@ if [ ! -f "$WORDLISTS_DIR/subdomains.txt" ]; then
 fi
 
 # ============ VERIFICATION ============
-echo "[5/6] Verifying installations..."
+echo "[6/7] Verifying installations..."
 
 INSTALLED_TOOLS=("subfinder" "waybackurls" "httpx" "nuclei" "dalfox" "gau")
 MISSING=""
@@ -145,7 +187,16 @@ done
 [ -d "$TOOLS_DIR/SubEnum" ] && echo "  ✓ SubEnum" || echo "  ✗ SubEnum: NOT FOUND"
 [ -d "$TOOLS_DIR/sqlifinder" ] && echo "  ✓ sqlifinder" || echo "  ✗ sqlifinder: NOT FOUND"
 
-echo "[6/6] Installation complete!"
+# Check John the Ripper
+if command -v john &>/dev/null || [ -f "$TOOLS_DIR/john" ] || [ -f "$JOHN_DIR/run/john" ]; then
+    JV=$(john --version 2>/dev/null || echo "installed")
+    echo "  ✓ john: $JV"
+else
+    echo "  ✗ john: NOT FOUND"
+    MISSING="$MISSING john"
+fi
+
+echo "[7/7] Installation complete!"
 echo ""
 echo "Tools installed to: $TOOLS_DIR"
 echo "Nuclei templates: $NUCLEI_TEMPLATES_DIR"

@@ -16,60 +16,45 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .workspace import (
-    FileCategory,
-    ProjectWorkspaceManager,
-    WORKSPACE_DIRS,
-    get_workspace_manager,
-)
-from .terminal import DEFAULT_ALLOWLIST, TerminalRegistry
 from .agent_knowledge import (
     AGENT_OWNERSHIP,
     AgentKnowledgeRegistry,
-    KnowledgeKind,
+)
+from .agent_models import (
+    AgentModelRegistry,
+)
+from .coverage import (
+    DIMENSION_LABELS,
+    DIMENSIONS,
+    get_coverage_engine,
 )
 from .methodology import (
     AWESOME_BBB_TOOLS_CATEGORIES,
     BLANK_MD_TEMPLATE_SECTIONS,
     BURP_SUITE_PHASES,
-    MethodologyReference,
-    MethodologyReferenceEngine,
-    ReferenceKind,
     get_methodology_engine,
 )
-from .validation import (
-    CandidateFinding,
-    EvidenceItem,
-    FindingStatus,
-    FindingValidationPipeline,
-    PipelineStage,
-    ValidationOutcome,
-    get_validation_pipeline,
-)
+from .ollama_embedder import OllamaEmbedder
 from .report_template import (
     BlankReportRenderer,
     ReportFinding,
     finding_to_report_finding,
 )
-from .coverage import (
-    CoverageEngine,
-    CoverageReport,
-    DIMENSIONS,
-    DIMENSION_LABELS,
-    get_coverage_engine,
-)
-from .agent_models import (
-    AgentModelAssignment,
-    AgentModelRegistry,
-    DEFAULT_AGENT_MODELS,
-)
 from .research_memory import (
-    HashEmbedder,
-    ResearchMemoryEngine,
     get_research_memory,
 )
-from .ollama_embedder import OllamaEmbedder
-
+from .terminal import DEFAULT_ALLOWLIST, TerminalRegistry
+from .validation import (
+    CandidateFinding,
+    EvidenceItem,
+    PipelineStage,
+    get_validation_pipeline,
+)
+from .workspace import (
+    FileCategory,
+    ProjectWorkspaceManager,
+    get_workspace_manager,
+)
 
 # ---- Request / response models ------------------------------------------------
 

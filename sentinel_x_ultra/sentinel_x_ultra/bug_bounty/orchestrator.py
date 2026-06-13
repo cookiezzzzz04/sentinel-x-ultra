@@ -11,58 +11,65 @@ import asyncio
 import json
 import re
 import uuid
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
-from .system_prompts import FOUNDATIONAL_PRINCIPLES, DECISION_HIERARCHY, AGENT_ARCHITECTURE
-from .llm_provider import LLMProvider, LLMConfig, get_llm_provider, VulnerabilityHypothesis
-from .url_parser import URLParserAgent, ProgramIntelligence, AssetEntry
-from .policy_enforcer import PolicyEnforcerAgent, PolicyRule, PolicyDecisionOutput, PolicyDecision
-from .webhook import WebhookManager
-from .scope_guardian import ScopeGuardianAgent, ScopeCheckResult, ScopeAuthorization, AuthorizationState
-from .passive_intel import PassiveIntelligenceAgent, PassiveIntelResult
-from .active_enum import ActiveEnumerationAgent, ActiveEnumResult
-from .vuln_scanner import VulnerabilityScannerAgent, TestResult
-from .validation_engine import ValidationEngineAgent, ValidationResult
-from .exploitation import ExploitationAgent, ProofOfConcept
-from .analysis import AnalysisAgent, FindingAnalysis
-from .report_generation import ReportGenerationAgent, VulnerabilityReport
-from .agent_memory import AgentMemory
-from .data_sources import DataSourceAggregator
 from ..agent_tool_integration import get_agent_tool_integration
+from .active_enum import ActiveEnumerationAgent, ActiveEnumResult
+from .agent_memory import AgentMemory
+from .analysis import AnalysisAgent, FindingAnalysis
+from .data_sources import DataSourceAggregator
 from .execution_engine import (
-    ParallelExecutor, ResultCache, RateLimiter, TimeoutManager,
-    get_parallel_executor, get_result_cache, get_rate_limiter, get_timeout_manager,
+    get_parallel_executor,
+    get_rate_limiter,
+    get_result_cache,
+    get_timeout_manager,
+)
+from .exploitation import ExploitationAgent, ProofOfConcept
+from .llm_provider import LLMProvider, get_llm_provider
+from .passive_intel import PassiveIntelligenceAgent, PassiveIntelResult
+from .policy_enforcer import PolicyEnforcerAgent, PolicyRule
+from .report_generation import ReportGenerationAgent, VulnerabilityReport
+from .scope_guardian import (
+    ScopeCheckResult,
+    ScopeGuardianAgent,
 )
 from .security_guard import (
-    ScopeValidator, OutputSanitizer, EthicalGuard, ResourceLimiter,
-    get_scope_validator, get_output_sanitizer, get_ethical_guard, get_resource_limiter,
+    get_ethical_guard,
+    get_output_sanitizer,
+    get_resource_limiter,
+    get_scope_validator,
 )
+from .system_prompts import AGENT_ARCHITECTURE, DECISION_HIERARCHY, FOUNDATIONAL_PRINCIPLES
+from .url_parser import AssetEntry, ProgramIntelligence, URLParserAgent
+from .validation_engine import ValidationEngineAgent, ValidationResult
+from .vuln_scanner import TestResult, VulnerabilityScannerAgent
+from .webhook import WebhookManager
 
 
 @dataclass
 class BugBountyPipelineResult:
     """Complete result of running all 10 agents."""
     pipeline_id: str = ""
-    program_intel: Optional[ProgramIntelligence] = None
-    policy_rules: List[PolicyRule] = field(default_factory=list)
-    policy_decisions: List[Dict[str, Any]] = field(default_factory=list)
-    scope_results: List[ScopeCheckResult] = field(default_factory=list)
-    scope_authorizations: List[Dict[str, Any]] = field(default_factory=list)
-    passive_intel: List[PassiveIntelResult] = field(default_factory=list)
-    active_enum: List[ActiveEnumResult] = field(default_factory=list)
-    scan_results: List[TestResult] = field(default_factory=list)
-    validation_results: List[ValidationResult] = field(default_factory=list)
-    proofs_of_concept: List[ProofOfConcept] = field(default_factory=list)
-    analyses: List[FindingAnalysis] = field(default_factory=list)
-    reports: List[VulnerabilityReport] = field(default_factory=list)
-    file_findings: List[Dict[str, Any]] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    program_intel: ProgramIntelligence | None = None
+    policy_rules: list[PolicyRule] = field(default_factory=list)
+    policy_decisions: list[dict[str, Any]] = field(default_factory=list)
+    scope_results: list[ScopeCheckResult] = field(default_factory=list)
+    scope_authorizations: list[dict[str, Any]] = field(default_factory=list)
+    passive_intel: list[PassiveIntelResult] = field(default_factory=list)
+    active_enum: list[ActiveEnumResult] = field(default_factory=list)
+    scan_results: list[TestResult] = field(default_factory=list)
+    validation_results: list[ValidationResult] = field(default_factory=list)
+    proofs_of_concept: list[ProofOfConcept] = field(default_factory=list)
+    analyses: list[FindingAnalysis] = field(default_factory=list)
+    reports: list[VulnerabilityReport] = field(default_factory=list)
+    file_findings: list[dict[str, Any]] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     started_at: str = ""
     completed_at: str = ""
     ethical_rules_applied: bool = True
-    downstream_guidance: Dict[str, Any] = field(default_factory=dict)
+    downstream_guidance: dict[str, Any] = field(default_factory=dict)
 
 
 class BugBountyOrchestrator:
@@ -80,7 +87,7 @@ class BugBountyOrchestrator:
     - 30 security tools available: nmap, httpx, nuclei, sqlmap, etc.
     """
 
-    def __init__(self, webhook_manager: Optional[WebhookManager] = None, llm_provider: Optional[LLMProvider] = None):
+    def __init__(self, webhook_manager: WebhookManager | None = None, llm_provider: LLMProvider | None = None):
         self.webhook_manager = webhook_manager
         self.llm_provider = llm_provider or get_llm_provider()
         self.memory = AgentMemory()  # Phase 3: Cross-agent shared memory
@@ -122,7 +129,7 @@ class BugBountyOrchestrator:
             AGENT_ARCHITECTURE,
         ])
 
-    def _build_ethical_rules(self) -> List[str]:
+    def _build_ethical_rules(self) -> list[str]:
         """Build the ethical rules that govern all agent actions."""
         return [
             "NEVER test unauthorized targets",
@@ -139,10 +146,10 @@ class BugBountyOrchestrator:
         self,
         target_url: str = "",
         target_domain: str = "",
-        in_scope: Optional[List[str]] = None,
-        out_of_scope: Optional[List[str]] = None,
-        project_id: Optional[str] = None,
-        folder_files: Optional[Dict[str, str]] = None,
+        in_scope: list[str] | None = None,
+        out_of_scope: list[str] | None = None,
+        project_id: str | None = None,
+        folder_files: dict[str, str] | None = None,
     ) -> BugBountyPipelineResult:
         """Run the complete 10-agent bug bounty pipeline."""
         result = BugBountyPipelineResult(
@@ -154,7 +161,7 @@ class BugBountyOrchestrator:
             # Store folder files on orchestrator for agent access
             self.folder_files = folder_files or {}
             self._project_id = project_id
-            
+
             # Phase 1: Program Intelligence (Agents 1-3)
             if target_url:
                 result.program_intel = await self._run_agent_1(target_url)
@@ -249,7 +256,7 @@ class BugBountyOrchestrator:
                 result.file_findings = self._scan_folder_files(self.folder_files)
 
         except Exception as e:
-            result.errors.append(f"Pipeline error: {str(e)}")
+            result.errors.append(f"Pipeline error: {e!s}")
 
         result.completed_at = datetime.utcnow().isoformat()
 
@@ -277,7 +284,7 @@ class BugBountyOrchestrator:
             policy_decisions=result.policy_decisions,
         )
 
-    async def _run_agent_1(self, url: str) -> Optional[ProgramIntelligence]:
+    async def _run_agent_1(self, url: str) -> ProgramIntelligence | None:
         """Agent 1: Parse program URL using AI-powered intelligence.
 
         Phase 1 Upgrade: Uses LLMProvider for advanced program analysis
@@ -378,7 +385,7 @@ class BugBountyOrchestrator:
                 owned_domains=result.program_intel.in_scope_domains,
             )
 
-    def _check_scope(self, target: str, in_scope: List[str], out_of_scope: List[str]) -> bool:
+    def _check_scope(self, target: str, in_scope: list[str], out_of_scope: list[str]) -> bool:
         """Check if target is in scope (Agent 3 integration)."""
         self.agent_3.set_scope(in_scope=in_scope, out_of_scope=out_of_scope)
         check = self.agent_3.check_target(target)
@@ -458,7 +465,6 @@ class BugBountyOrchestrator:
         can benefit from upstream OSINT intelligence.
 
         Phase 4: Enriches OSINT with external data sources (Shodan, Censys, SecurityTrails, URLScan)."""
-        from ..agent_tool_integration import get_agent_tool_integration
         integration = get_agent_tool_integration()
 
         # Rate-limit external tool API calls
@@ -533,14 +539,14 @@ class BugBountyOrchestrator:
             return
 
         # Collect all OSINT data across all passive intel results
-        all_priority_targets: List[str] = []
-        all_attack_surface: List[Dict[str, Any]] = []
-        all_guidance: Dict[str, Any] = {
+        all_priority_targets: list[str] = []
+        all_attack_surface: list[dict[str, Any]] = []
+        all_guidance: dict[str, Any] = {
             "asset_discovery_recommendations": [],
             "scanner_recommendations": [],
             "validation_recommendations": [],
         }
-        all_high_confidence: List[str] = []
+        all_high_confidence: list[str] = []
 
         for intel in result.passive_intel:
             # Priority targets
@@ -605,7 +611,6 @@ class BugBountyOrchestrator:
         """Agent 5: Active enumeration with all active tools.
         Uses dirsearch, gobuster, wfuzz, ffuf, nmap, dnsx via AgentToolIntegration.
         Feeds real tool findings into AI reasoning context."""
-        from ..agent_tool_integration import get_agent_tool_integration
         integration = get_agent_tool_integration()
 
         # Rate-limit external tool API calls
@@ -636,7 +641,7 @@ class BugBountyOrchestrator:
 
         return result
 
-    async def _run_agent_6(self, endpoint: str, test_types: Optional[List[str]] = None) -> List[TestResult]:
+    async def _run_agent_6(self, endpoint: str, test_types: list[str] | None = None) -> list[TestResult]:
         """Agent 6: Vulnerability scanning using all available tools.
 
         Phase 2: Feeds real tool findings (nuclei, sqlmap, dalfox, corstest, wpscan, cmsmap)
@@ -645,7 +650,6 @@ class BugBountyOrchestrator:
 
         test_types limits which vuln types to check for deduplication.
         """
-        from ..agent_tool_integration import get_agent_tool_integration
         integration = get_agent_tool_integration()
 
         # Rate-limit external tool API calls
@@ -682,11 +686,11 @@ class BugBountyOrchestrator:
 
         return result
 
-    async def _run_agent_7(self, finding: Dict[str, Any]) -> ValidationResult:
+    async def _run_agent_7(self, finding: dict[str, Any]) -> ValidationResult:
         """Agent 7: Validation engine."""
         return await self.agent_7.validate(finding)
 
-    async def _run_agent_8(self, finding: Dict[str, Any]) -> ProofOfConcept:
+    async def _run_agent_8(self, finding: dict[str, Any]) -> ProofOfConcept:
         """Agent 8: Exploitation/PoC."""
         return await self.agent_8.create_poc(finding)
 
@@ -766,7 +770,7 @@ class BugBountyOrchestrator:
 
         return await self.agent_9.analyze(finding_dict)
 
-    async def _run_agent_10(self, finding: Dict[str, Any], analysis: Any, poc: Any) -> VulnerabilityReport:
+    async def _run_agent_10(self, finding: dict[str, Any], analysis: Any, poc: Any) -> VulnerabilityReport:
         """Agent 10: Report generation. Passes rich structured data to the strict renderer."""
         # Build rich analysis dict from FindingAnalysis object
         analysis_dict = {}
@@ -830,12 +834,12 @@ class BugBountyOrchestrator:
 
         return await self.agent_10.generate_report(finding, analysis_dict, poc_dict)
 
-    def _scan_folder_files(self, folder_files: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _scan_folder_files(self, folder_files: dict[str, str]) -> list[dict[str, Any]]:
         """Scan uploaded folder files for common security issues.
         Detects hardcoded secrets, API keys, SQL injection patterns,
         command injection, insecure configs, and other common vulnerabilities.
         """
-        findings: List[Dict[str, Any]] = []
+        findings: list[dict[str, Any]] = []
         seen = set()
 
         # Patterns to scan for
@@ -921,7 +925,7 @@ class BugBountyOrchestrator:
 
         return findings
 
-    def get_summary(self, result: BugBountyPipelineResult) -> Dict[str, Any]:
+    def get_summary(self, result: BugBountyPipelineResult) -> dict[str, Any]:
         """Get a human-readable summary of pipeline results."""
         policy_decisions_summary = {}
         if result.policy_decisions:

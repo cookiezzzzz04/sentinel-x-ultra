@@ -15,7 +15,16 @@ from typing import Any
 
 import structlog
 
-from .phase3 import Phase3Agent, Finding, Severity, Confidence, MessageBus, MultiProviderRouter, AgentType, TaskPayload, LLMMessage, MessageRole
+from .phase3 import (
+    AgentType,
+    Confidence,
+    Finding,
+    MessageBus,
+    MultiProviderRouter,
+    Phase3Agent,
+    Severity,
+    TaskPayload,
+)
 
 logger = structlog.get_logger()
 
@@ -153,7 +162,7 @@ class RemediationAgent(Phase3Agent):
     def _generate_remediation_steps(self, cwe_ids: list[str], finding: dict[str, Any]) -> list[dict[str, Any]]:
         """Generate remediation steps based on CWE IDs."""
         steps = []
-        
+
         # Mapping of CWE IDs to remediation guidance
         cwe_remediation_map = {
             "CWE-89": {  # SQL Injection
@@ -517,6 +526,12 @@ class ReportGenerator:
     def _extract_key_findings(self, findings: list[Finding], max_count: int = 5) -> list[dict[str, Any]]:
         """Extract the most important findings for executives."""
         # Sort by severity then confidence
+        severity_weights = {
+            Severity.CRITICAL: 10,
+            Severity.HIGH: 7,
+            Severity.MEDIUM: 4,
+            Severity.LOW: 1,
+        }
         sorted_findings = sorted(
             findings,
             key=lambda f: (severity_weights.get(f.severity, 0), f.confidence.value),

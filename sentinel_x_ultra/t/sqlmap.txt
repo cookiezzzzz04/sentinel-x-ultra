@@ -1,0 +1,6 @@
+# sqlmap.txt - SQL injection scan results
+# Populated by the recon agent.
+#
+# Example command:
+#   sqlmap -m param.txt --batch --random-agent --level 1 | tee sqlmap.txt
+# (no findings yet - sqlmap will append here as it runs)

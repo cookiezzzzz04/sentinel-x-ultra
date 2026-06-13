@@ -13,10 +13,9 @@ Features:
 - XXE payload generation
 """
 
-import asyncio
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import Any
 
 
 @dataclass
@@ -25,14 +24,14 @@ class XXEResult:
     target: str
     test_type: str
     vulnerability_detected: bool
-    findings: List[Dict[str, Any]]
-    file_read_results: Dict[str, str]
+    findings: list[dict[str, Any]]
+    file_read_results: dict[str, str]
     execution_time_seconds: float
     tool_version: str
-    raw_responses: List[Dict[str, Any]]
-    errors: List[str]
+    raw_responses: list[dict[str, Any]]
+    errors: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -176,7 +175,7 @@ class XXETool:
     def __init__(self):
         self.name = "xxe_tool"
         self.test_types = list(XXE_PAYLOADS.keys())
-        self.version_cache: Optional[str] = "1.0.0"  # Internal version
+        self.version_cache: str | None = "1.0.0"  # Internal version
 
     def is_available(self) -> bool:
         """XXE tool is always available (payload-based, no external binary needed)"""
@@ -189,11 +188,11 @@ class XXETool:
         self,
         target: str,
         test_type: str = "all",
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
         method: str = "POST",
         content_type: str = "application/xml",
         timeout_sec: int = 30,
-        collaborator_url: Optional[str] = None,
+        collaborator_url: str | None = None,
     ) -> XXEResult:
         """
         Test a target endpoint for XXE vulnerabilities.
@@ -210,7 +209,7 @@ class XXETool:
         errors = []
         findings = []
         raw_responses = []
-        file_read_results: Dict[str, str] = {}
+        file_read_results: dict[str, str] = {}
         start_time = datetime.now()
         vuln_detected = False
 
@@ -345,7 +344,7 @@ class XXETool:
             errors=errors
         )
 
-    def get_payloads(self, test_type: str = "all") -> Dict[str, List[str]]:
+    def get_payloads(self, test_type: str = "all") -> dict[str, list[str]]:
         """Get XXE payloads for manual use or integration"""
         if test_type == "all":
             return XXE_PAYLOADS
@@ -353,7 +352,7 @@ class XXETool:
             return {test_type: XXE_PAYLOADS[test_type]}
         return {}
 
-    def get_capabilities(self) -> Dict[str, Any]:
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -385,7 +384,7 @@ class XXETool:
 
 
 # Global instance for tool registry
-_xxe_tool: Optional[XXETool] = None
+_xxe_tool: XXETool | None = None
 
 
 def get_xxe_tool() -> XXETool:

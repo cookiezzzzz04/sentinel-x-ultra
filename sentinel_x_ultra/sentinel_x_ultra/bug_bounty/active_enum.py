@@ -28,12 +28,9 @@ Core principles:
 """
 
 import uuid
-import re
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
-
+from typing import Any
 
 # ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -90,8 +87,8 @@ class Endpoint:
     method: str = "GET"
     status_code: int = 0
     content_type: str = ""
-    technologies: List[str] = field(default_factory=list)
-    parameters: List[str] = field(default_factory=list)
+    technologies: list[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
     observed: bool = False
     observation_source: str = ""
     response_length: int = 0
@@ -103,7 +100,7 @@ class Relationship:
     source_asset: str = ""
     target_asset: str = ""
     relationship_type: str = ""  # e.g., "authenticates_to", "routes_to", "depends_on"
-    evidence: List[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
 
@@ -122,7 +119,7 @@ class Contradiction:
     contradiction_type: str = ""  # ownership, classification, technology, exposure
     asset: str = ""
     description: str = ""
-    evidence: List[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -136,14 +133,14 @@ class AssetAnalysis:
     criticality_score: int = 50
     priority_score: int = 50
     exposure_level: str = ""
-    relationships: List[Dict[str, Any]] = field(default_factory=list)
-    evidence: List[str] = field(default_factory=list)
-    supporting_observations: List[str] = field(default_factory=list)
-    contradictions: List[Dict[str, Any]] = field(default_factory=list)
-    intelligence_gaps: List[Dict[str, Any]] = field(default_factory=list)
+    relationships: list[dict[str, Any]] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    supporting_observations: list[str] = field(default_factory=list)
+    contradictions: list[dict[str, Any]] = field(default_factory=list)
+    intelligence_gaps: list[dict[str, Any]] = field(default_factory=list)
     confidence_classification: str = ""
-    recommended_review_actions: List[str] = field(default_factory=list)
-    reasoning: List[str] = field(default_factory=list)
+    recommended_review_actions: list[str] = field(default_factory=list)
+    reasoning: list[str] = field(default_factory=list)
 
 
 # ── Active Enum Result (Backward Compatible) ────────────────────────────────
@@ -157,25 +154,25 @@ class ActiveEnumResult:
     """
     # Original fields (backward compatible)
     domain: str = ""
-    alive_subdomains: List[str] = field(default_factory=list)
-    open_ports: List[Dict[str, Any]] = field(default_factory=list)
-    endpoints: List[Endpoint] = field(default_factory=list)
-    technologies: Dict[str, List[str]] = field(default_factory=dict)
-    interesting_files: List[str] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
+    alive_subdomains: list[str] = field(default_factory=list)
+    open_ports: list[dict[str, Any]] = field(default_factory=list)
+    endpoints: list[Endpoint] = field(default_factory=list)
+    technologies: dict[str, list[str]] = field(default_factory=dict)
+    interesting_files: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     # New fields (14-phase analysis pipeline)
-    assets_analyzed: List[AssetAnalysis] = field(default_factory=list)
-    relationships: List[Relationship] = field(default_factory=list)
-    contradictions: List[Contradiction] = field(default_factory=list)
-    intelligence_gaps: List[IntelligenceGap] = field(default_factory=list)
-    priority_targets: List[Dict[str, Any]] = field(default_factory=list)
-    downstream_guidance: Dict[str, Any] = field(default_factory=dict)
-    phases_run: List[str] = field(default_factory=list)
+    assets_analyzed: list[AssetAnalysis] = field(default_factory=list)
+    relationships: list[Relationship] = field(default_factory=list)
+    contradictions: list[Contradiction] = field(default_factory=list)
+    intelligence_gaps: list[IntelligenceGap] = field(default_factory=list)
+    priority_targets: list[dict[str, Any]] = field(default_factory=list)
+    downstream_guidance: dict[str, Any] = field(default_factory=dict)
+    phases_run: list[str] = field(default_factory=list)
 
     # Phase 2: Real Tool Integration — stores tool execution metadata
-    tool_execution_details: List[Dict[str, Any]] = field(default_factory=list)
-    tool_integration_findings: Dict[str, Any] = field(default_factory=dict)
+    tool_execution_details: list[dict[str, Any]] = field(default_factory=list)
+    tool_integration_findings: dict[str, Any] = field(default_factory=dict)
     tools_executed: int = 0
     tool_findings_count: int = 0
 
@@ -185,7 +182,7 @@ class ActiveEnumResult:
         return self.domain
 
     @property
-    def subdomains(self) -> List[str]:
+    def subdomains(self) -> list[str]:
         return self.alive_subdomains
 
 
@@ -533,7 +530,7 @@ class ActiveEnumerationAgent:
                 analysis.evidence.append(f"Cannot determine ownership for '{asset_name}' from available evidence")
                 analysis.reasoning.append("Ownership UNKNOWN: no authoritative evidence available")
 
-        result.notes.append(f"Ownership verification complete")
+        result.notes.append("Ownership verification complete")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 4 — BUSINESS CRITICALITY ASSESSMENT (0-100)
@@ -868,7 +865,7 @@ class ActiveEnumerationAgent:
                     description=f"Ownership conflict: '{asset_name}' is subdomain of '{domain}' but flagged as THIRD_PARTY",
                     evidence=[
                         f"Subdomain relationship indicates '{domain}' ownership",
-                        f"Third-party pattern detected in asset name",
+                        "Third-party pattern detected in asset name",
                     ],
                 )
                 result.contradictions.append(contradiction)
@@ -1189,7 +1186,7 @@ class ActiveEnumerationAgent:
 
         Recommendations must be evidence-based.
         """
-        guidance: Dict[str, Any] = {
+        guidance: dict[str, Any] = {
             "validation_recommendations": [],
             "reporting_recommendations": [],
             "inventory_recommendations": [],
@@ -1315,21 +1312,21 @@ class ActiveEnumerationAgent:
     # BACKWARD COMPATIBILITY WRAPPERS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def get_analysis_by_name(self, result: ActiveEnumResult, asset_name: str) -> Optional[AssetAnalysis]:
+    def get_analysis_by_name(self, result: ActiveEnumResult, asset_name: str) -> AssetAnalysis | None:
         """Get the analysis for a specific asset by name."""
         for a in result.assets_analyzed:
             if a.asset_name == asset_name:
                 return a
         return None
 
-    def get_priority_targets(self, result: ActiveEnumResult, min_score: int = 70) -> List[Dict[str, Any]]:
+    def get_priority_targets(self, result: ActiveEnumResult, min_score: int = 70) -> list[dict[str, Any]]:
         """Get priority targets above a minimum score threshold."""
         return [pt for pt in result.priority_targets if pt["priority_score"] >= min_score]
 
-    def get_summary(self, result: ActiveEnumResult) -> Dict[str, Any]:
+    def get_summary(self, result: ActiveEnumResult) -> dict[str, Any]:
         """Get a summary of the analysis."""
-        classification_counts: Dict[str, int] = {}
-        ownership_counts: Dict[str, int] = {}
+        classification_counts: dict[str, int] = {}
+        ownership_counts: dict[str, int] = {}
         for a in result.assets_analyzed:
             classification_counts[a.asset_type] = classification_counts.get(a.asset_type, 0) + 1
             ownership_counts[a.ownership_status] = ownership_counts.get(a.ownership_status, 0) + 1

@@ -3,24 +3,21 @@ Burp Suite Proxy Integration for Community Edition
 SENTINEL-X can act as an upstream proxy to Burp Suite Community to analyze traffic in real-time
 """
 
-import asyncio
-import json
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-
+from typing import Any
 
 # Module-level cache for persistent request tracking across endpoint calls
-_burp_proxy_cache: Dict[str, "BurpProxyAnalyzer"] = {}
+_burp_proxy_cache: dict[str, "BurpProxyAnalyzer"] = {}
 
 
 class BurpProxyAnalyzer:
     """Analyzes HTTP traffic by acting as an upstream proxy to Burp Suite"""
-    
+
     def __init__(self, upstream_proxy: str = "http://localhost:8080"):
         self.upstream_proxy = upstream_proxy
-        self.requests: List[Dict[str, Any]] = []
-        self.findings: List[Dict[str, Any]] = []
-        
+        self.requests: list[dict[str, Any]] = []
+        self.findings: list[dict[str, Any]] = []
+
         # Check if we have an existing analyzer for this proxy
         global _burp_proxy_cache
         if upstream_proxy in _burp_proxy_cache:
@@ -30,11 +27,11 @@ class BurpProxyAnalyzer:
             self.findings = existing.findings
         else:
             _burp_proxy_cache[upstream_proxy] = self
-    
-    async def analyze_request(self, method: str, url: str, headers: Dict, body: str = None) -> Dict[str, Any]:
+
+    async def analyze_request(self, method: str, url: str, headers: dict, body: str = None) -> dict[str, Any]:
         """Analyze a single request for security issues"""
         findings = []
-        
+
         # Check for SQL injection patterns
         sql_patterns = ["'", " UNION ", " DROP ", "--", ";--", "1=1", "admin'"]
         for pattern in sql_patterns:
@@ -46,7 +43,7 @@ class BurpProxyAnalyzer:
                     "location": "url" if pattern in url.lower() else "body",
                     "description": f"Potential SQL injection pattern detected: {pattern}"
                 })
-        
+
         # Check for XSS patterns
         xss_patterns = ["<script", "<img", "javascript:", "onerror=", "onload=", "alert("]
         for pattern in xss_patterns:
@@ -58,7 +55,7 @@ class BurpProxyAnalyzer:
                     "location": "url" if pattern in url.lower() else "body",
                     "description": f"Potential XSS pattern detected: {pattern}"
                 })
-        
+
         # Check for path traversal
         path_patterns = ["../", "..\\", "%2e%2e", "etc/passwd", "windows/system32"]
         for pattern in path_patterns:
@@ -70,7 +67,7 @@ class BurpProxyAnalyzer:
                     "location": "url",
                     "description": f"Potential path traversal pattern detected: {pattern}"
                 })
-        
+
         # Check for SSRF patterns
         ssrf_patterns = ["169.254.169.254", "localhost", "metadata.google", "10.0.0.", "127.0.0.1"]
         for pattern in ssrf_patterns:
@@ -82,15 +79,15 @@ class BurpProxyAnalyzer:
                     "location": "url",
                     "description": f"Potential SSRF target detected: {pattern}"
                 })
-        
+
         # Check for API endpoints
         api_indicators = ["/api/", "/rest/", "/graphql", "/v1/", "/v2/", "/graphql"]
         is_api = any(indicator in url.lower() for indicator in api_indicators)
-        
+
         # Check for auth-related endpoints
         auth_indicators = ["/login", "/auth", "/token", "/signin", "/oauth", "/verify"]
         is_auth = any(indicator in url.lower() for indicator in auth_indicators)
-        
+
         result = {
             "method": method,
             "url": url,
@@ -100,31 +97,31 @@ class BurpProxyAnalyzer:
             "is_auth_endpoint": is_auth,
             "has_sensitive_data": self._check_sensitive_data(body, headers)
         }
-        
+
         self.requests.append(result)
         self.findings.extend(findings)
-        
+
         return result
-    
-    def _check_sensitive_data(self, body: Optional[str], headers: Dict) -> bool:
+
+    def _check_sensitive_data(self, body: str | None, headers: dict) -> bool:
         """Check if request contains sensitive data"""
         sensitive_keys = ["password", "token", "secret", "api_key", "auth", "credential"]
-        
+
         if body:
             for key in sensitive_keys:
                 if key.lower() in body.lower():
                     return True
-        
-        for key in headers.keys():
+
+        for key in headers:
             if any(s in key.lower() for s in sensitive_keys):
                 return True
-        
+
         return False
-    
-    async def analyze_response(self, url: str, status_code: int, headers: Dict, body: str = None) -> Dict[str, Any]:
+
+    async def analyze_response(self, url: str, status_code: int, headers: dict, body: str = None) -> dict[str, Any]:
         """Analyze a response for security issues"""
         findings = []
-        
+
         # Check for error responses
         if status_code >= 400:
             findings.append({
@@ -133,7 +130,7 @@ class BurpProxyAnalyzer:
                 "status_code": status_code,
                 "description": f"Error response detected: {status_code}"
             })
-        
+
         # Check for missing security headers
         required_headers = ["Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options"]
         for header in required_headers:
@@ -144,7 +141,7 @@ class BurpProxyAnalyzer:
                     "header": header,
                     "description": f"Recommended security header missing: {header}"
                 })
-        
+
         # Check for sensitive data exposure
         sensitive_patterns = ["password", "token", "api_key", "secret", "credential"]
         if body:
@@ -156,15 +153,15 @@ class BurpProxyAnalyzer:
                         "pattern": pattern,
                         "description": "Potential sensitive data exposed in response"
                     })
-        
+
         return {
             "url": url,
             "status_code": status_code,
             "timestamp": datetime.utcnow().isoformat(),
             "findings": findings
         }
-    
-    def get_summary(self) -> Dict[str, Any]:
+
+    def get_summary(self) -> dict[str, Any]:
         """Get analysis summary"""
         return {
             "total_requests": len(self.requests),
@@ -175,14 +172,14 @@ class BurpProxyAnalyzer:
             "high_findings": len([f for f in self.findings if f.get("severity") == "high"]),
             "findings_by_type": self._count_by_type(self.findings)
         }
-    
-    def _count_by_type(self, findings: List[Dict]) -> Dict[str, int]:
+
+    def _count_by_type(self, findings: list[dict]) -> dict[str, int]:
         counts = {}
         for f in findings:
             type_ = f.get("type", "unknown")
             counts[type_] = counts.get(type_, 0) + 1
         return counts
-    
+
     def clear(self):
         """Clear all stored requests and findings"""
         self.requests = []

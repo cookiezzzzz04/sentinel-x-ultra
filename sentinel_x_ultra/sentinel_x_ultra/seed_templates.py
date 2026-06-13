@@ -27,8 +27,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict
-
 
 # --- Template content -------------------------------------------------------
 
@@ -120,7 +118,7 @@ SQLMAP_TXT = (
 
 # --- File map ---------------------------------------------------------------
 
-TEMPLATES: Dict[str, str] = {
+TEMPLATES: dict[str, str] = {
     "target.txt":         TARGET_TXT,
     "AllSubs.txt":        ALL_SUBS_TXT,
     "AliveSubs.txt":      ALIVE_SUBS_TXT,

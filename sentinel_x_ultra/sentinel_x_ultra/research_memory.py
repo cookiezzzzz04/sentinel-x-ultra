@@ -37,10 +37,11 @@ import math
 import re
 import uuid
 from collections import Counter
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable, Iterable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Protocol
+from typing import Any, Protocol
 
 import structlog
 
@@ -200,7 +201,7 @@ class ResearchMemoryEngine:
             json.dumps(
                 {
                     "project_id": project_id,
-                    "embedding_model": self.embedder.dim and f"hash-{self.embedder.dim}" or "unknown",
+                    "embedding_model": (self.embedder.dim and f"hash-{self.embedder.dim}") or "unknown",
                     "chunks": [c.to_dict() for c in chunks],
                 },
                 indent=2,
@@ -497,7 +498,7 @@ def get_research_memory(
     global _engine
     if _engine is None:
         _engine = ResearchMemoryEngine(base_path=base_path, embedder=embedder)
-    elif embedder is not None and not isinstance(_engine.embedder, OllamaEmbedder):
+    elif embedder is not None and not isinstance(_engine.embedder, type(embedder)):
         # Allow swapping in a real embedder after first creation.
         _engine.embedder = embedder
     return _engine

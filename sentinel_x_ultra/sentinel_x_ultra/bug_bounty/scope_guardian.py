@@ -26,13 +26,9 @@ Default behavior is DENY / BLOCK.
 
 import asyncio
 import ipaddress
-import json
-import re
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from urllib.parse import urlparse
-
 
 # ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -107,19 +103,19 @@ class ScopeAuthorization:
     risk_of_misauthorization: str = ""
 
     # Action categories
-    allowed_actions: List[str] = field(default_factory=list)
-    restricted_actions: List[str] = field(default_factory=list)
-    prohibited_actions: List[str] = field(default_factory=list)
+    allowed_actions: list[str] = field(default_factory=list)
+    restricted_actions: list[str] = field(default_factory=list)
+    prohibited_actions: list[str] = field(default_factory=list)
 
     # Restrictions and evidence
-    path_restrictions: List[str] = field(default_factory=list)
-    policy_restrictions: List[str] = field(default_factory=list)
-    contradictions: List[str] = field(default_factory=list)
-    uncertainties: List[str] = field(default_factory=list)
-    supporting_evidence: List[str] = field(default_factory=list)
+    path_restrictions: list[str] = field(default_factory=list)
+    policy_restrictions: list[str] = field(default_factory=list)
+    contradictions: list[str] = field(default_factory=list)
+    uncertainties: list[str] = field(default_factory=list)
+    supporting_evidence: list[str] = field(default_factory=list)
 
     # Reasoning
-    reasoning: List[str] = field(default_factory=list)
+    reasoning: list[str] = field(default_factory=list)
     recommended_next_action: str = ""
 
 
@@ -150,7 +146,7 @@ PROHIBITED_ACTIONS_DEFAULT = [
 
 # ── Asset Classification Helpers ────────────────────────────────────────────
 
-def classify_asset(target: str) -> Tuple[AssetType, float]:
+def classify_asset(target: str) -> tuple[AssetType, float]:
     """Classify a target into an asset type with confidence score."""
     target = target.strip().lower()
 
@@ -246,30 +242,30 @@ class ScopeGuardianAgent:
 
     def __init__(self, llm_provider=None, memory=None):
         # Scope lists
-        self.in_scope_domains: List[str] = []
-        self.in_scope_wildcards: List[str] = []
-        self.out_of_scope_domains: List[str] = []
+        self.in_scope_domains: list[str] = []
+        self.in_scope_wildcards: list[str] = []
+        self.out_of_scope_domains: list[str] = []
         self.llm_provider = llm_provider
         self.memory = memory
-        self.in_scope_cidrs: List[ipaddress.IPv4Network] = []
-        self.in_scope_urls: List[str] = []
-        self.out_of_scope_urls: List[str] = []
+        self.in_scope_cidrs: list[ipaddress.IPv4Network] = []
+        self.in_scope_urls: list[str] = []
+        self.out_of_scope_urls: list[str] = []
 
         # Path-level restrictions
-        self.path_allows: List[str] = []    # Explicitly allowed path prefixes
-        self.path_blocks: List[str] = []    # Explicitly blocked path prefixes
+        self.path_allows: list[str] = []    # Explicitly allowed path prefixes
+        self.path_blocks: list[str] = []    # Explicitly blocked path prefixes
 
         # Policy restrictions
-        self.policy_restrictions: List[str] = []
+        self.policy_restrictions: list[str] = []
 
         # Third-party / known-owned domains
-        self.owned_domains: List[str] = []
-        self.third_party_domains: List[str] = []
+        self.owned_domains: list[str] = []
+        self.third_party_domains: list[str] = []
 
         # Testing authorization
-        self.allowed_actions: List[str] = list(ALLOWED_ACTIONS_DEFAULT)
-        self.restricted_actions: List[str] = list(RESTRICTED_ACTIONS_DEFAULT)
-        self.prohibited_actions: List[str] = list(PROHIBITED_ACTIONS_DEFAULT)
+        self.allowed_actions: list[str] = list(ALLOWED_ACTIONS_DEFAULT)
+        self.restricted_actions: list[str] = list(RESTRICTED_ACTIONS_DEFAULT)
+        self.prohibited_actions: list[str] = list(PROHIBITED_ACTIONS_DEFAULT)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API (Backward Compatible)
@@ -277,8 +273,8 @@ class ScopeGuardianAgent:
 
     def set_scope(
         self,
-        in_scope: Optional[List[str]] = None,
-        out_of_scope: Optional[List[str]] = None,
+        in_scope: list[str] | None = None,
+        out_of_scope: list[str] | None = None,
     ):
         """Configure scope boundaries."""
         self._reset_scope()
@@ -305,7 +301,7 @@ class ScopeGuardianAgent:
                 self.out_of_scope_urls.append(item)
             else:
                 self.out_of_scope_domains.append(item)
-    
+
     def _reset_scope(self):
         """Reset all scope lists."""
         self.in_scope_domains.clear()
@@ -320,12 +316,12 @@ class ScopeGuardianAgent:
 
     def set_program_scope(
         self,
-        owned_domains: Optional[List[str]] = None,
-        third_party_domains: Optional[List[str]] = None,
-        allowed_actions: Optional[List[str]] = None,
-        restricted_actions: Optional[List[str]] = None,
-        prohibited_actions: Optional[List[str]] = None,
-        policy_restrictions: Optional[List[str]] = None,
+        owned_domains: list[str] | None = None,
+        third_party_domains: list[str] | None = None,
+        allowed_actions: list[str] | None = None,
+        restricted_actions: list[str] | None = None,
+        prohibited_actions: list[str] | None = None,
+        policy_restrictions: list[str] | None = None,
     ):
         """Set additional program-level scope metadata for richer authorization."""
         if owned_domains:
@@ -374,15 +370,15 @@ class ScopeGuardianAgent:
             severity="info" if auth.decision == AuthorizationState.ALLOW else "block",
         )
 
-    def batch_check(self, targets: List[str]) -> List[ScopeCheckResult]:
+    def batch_check(self, targets: list[str]) -> list[ScopeCheckResult]:
         """Check multiple targets against scope (legacy)."""
         return [self.check_target(t) for t in targets]
 
-    def filter_in_scope(self, targets: List[str]) -> List[str]:
+    def filter_in_scope(self, targets: list[str]) -> list[str]:
         """Return only targets that pass scope check (legacy)."""
         return [t for t in targets if self.check_target(t).in_scope]
 
-    def filter_out_of_scope(self, targets: List[str]) -> List[str]:
+    def filter_out_of_scope(self, targets: list[str]) -> list[str]:
         """Return only targets that fail scope check (legacy)."""
         return [t for t in targets if not self.check_target(t).in_scope]
 
@@ -559,7 +555,7 @@ class ScopeGuardianAgent:
     # PHASE 3 — EXPLICIT IN-SCOPE ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase3_in_scope(self, domain: str, target: str, path: str, output: ScopeAuthorization) -> Tuple[AuthorizationState, str]:
+    def _phase3_in_scope(self, domain: str, target: str, path: str, output: ScopeAuthorization) -> tuple[AuthorizationState, str]:
         """Identify matching in-scope rules."""
         matched_rule = ""
 
@@ -596,7 +592,7 @@ class ScopeGuardianAgent:
     # PHASE 5 — PATH-LEVEL AUTHORIZATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase5_path(self, path: str, output: ScopeAuthorization) -> Tuple[AuthorizationState, List[str]]:
+    def _phase5_path(self, path: str, output: ScopeAuthorization) -> tuple[AuthorizationState, list[str]]:
         """Determine whether path restrictions exist.
 
         More specific path rules override broader rules.
@@ -687,7 +683,7 @@ class ScopeGuardianAgent:
     # PHASE 8 — TESTING AUTHORIZATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase8_testing(self, output: ScopeAuthorization) -> Tuple[List[str], List[str], List[str]]:
+    def _phase8_testing(self, output: ScopeAuthorization) -> tuple[list[str], list[str], list[str]]:
         """Return allowed, restricted, and prohibited testing actions."""
         return (
             list(self.allowed_actions),
@@ -699,7 +695,7 @@ class ScopeGuardianAgent:
     # PHASE 9 — POLICY OVERRIDES
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase9_policy(self, domain: str, path: str, output: ScopeAuthorization) -> List[str]:
+    def _phase9_policy(self, domain: str, path: str, output: ScopeAuthorization) -> list[str]:
         """Apply policy restrictions. Policy restrictions override scope authorization."""
         restrictions = []
         target_str = f"{domain}{path}"
@@ -794,13 +790,13 @@ class ScopeGuardianAgent:
     # PHASE 11 — CONTRADICTION DETECTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase11_contradictions(self, domain: str, path: str, output: ScopeAuthorization) -> List[str]:
+    def _phase11_contradictions(self, domain: str, path: str, output: ScopeAuthorization) -> list[str]:
         """Identify contradictory scope/policy rules.
 
         Phase 5 Deep: Uses LLM for semantic contradiction detection beyond
         simple list membership checks.
         """
-        contradictions: List[str] = []
+        contradictions: list[str] = []
 
         # Check if domain appears both in-scope and out-of-scope
         in_scope = any(domain_matches(domain, d) for d in self.in_scope_domains) or \
@@ -818,7 +814,7 @@ class ScopeGuardianAgent:
 
         # Check policy contradictions
         if output.policy_restrictions and output.scope_status == "IN_SCOPE":
-            contradictions.append(f"Policy restrictions exist despite in-scope status — may create authorization conflict")
+            contradictions.append("Policy restrictions exist despite in-scope status — may create authorization conflict")
 
         # Phase 5 Deep: Use LLM for semantic contradiction detection
         if self.llm_provider and self.llm_provider.is_available:
@@ -868,9 +864,9 @@ class ScopeGuardianAgent:
     # PHASE 12 — HALLUCINATION PREVENTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase12_hallucination(self, domain: str, output: ScopeAuthorization) -> List[str]:
+    def _phase12_hallucination(self, domain: str, output: ScopeAuthorization) -> list[str]:
         """Before authorizing, verify evidence support for each claim."""
-        evidence_checks: List[str] = []
+        evidence_checks: list[str] = []
 
         # "What evidence proves authorization?"
         if output.scope_status == "IN_SCOPE" and not output.matched_scope_rule:
@@ -994,7 +990,7 @@ class ScopeGuardianAgent:
             return f"MANUAL_REVIEW_REQUIRED — {'; '.join(improvements)}"
         return "MANUAL_REVIEW_REQUIRED — Insufficient information for automatic authorization"
 
-    def _finalize_block(self, output: ScopeAuthorization, reason: str, phases_run: List[str]) -> ScopeAuthorization:
+    def _finalize_block(self, output: ScopeAuthorization, reason: str, phases_run: list[str]) -> ScopeAuthorization:
         """Short-circuit and return a BLOCK decision with proportional confidence."""
         output.decision = AuthorizationState.BLOCK
         output.authorized = False

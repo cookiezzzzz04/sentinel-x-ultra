@@ -25,16 +25,15 @@ Methodology Flow:
 """
 
 import asyncio
-import subprocess
-import re
-import os
 import json
-import tempfile
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
-from datetime import datetime
+import os
 import platform
-
+import shutil
+import subprocess
+import tempfile
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Any
 
 # ============================================================================
 # TOOL INSTALLATION AND PATH MANAGEMENT
@@ -53,13 +52,13 @@ def _get_path_for_tool(tool_name: str) -> str:
     sentinelx_path = os.path.join(SENTINELX_TOOLS_DIR, tool_name)
     if os.path.exists(sentinelx_path):
         return sentinelx_path
-    
+
     # Check for .exe on Windows
     if platform.system() == "Windows":
         sentinelx_path_exe = os.path.join(SENTINELX_TOOLS_DIR, f"{tool_name}.exe")
         if os.path.exists(sentinelx_path_exe):
             return sentinelx_path_exe
-    
+
     # Check GOPATH/bin for Go-installed tools
     gopath = os.environ.get("GOPATH", os.path.expanduser("~/go"))
     gobin_path = os.path.join(gopath, "bin", tool_name)
@@ -69,7 +68,7 @@ def _get_path_for_tool(tool_name: str) -> str:
             return gobin_path_exe
     if os.path.exists(gobin_path):
         return gobin_path
-    
+
     # Check PATH
     for cmd in [tool_name, f"{tool_name}.exe"]:
         try:
@@ -81,7 +80,7 @@ def _get_path_for_tool(tool_name: str) -> str:
                 return result.stdout.strip().split('\n')[0]
         except:
             pass
-    
+
     return tool_name  # Return tool name, let caller handle if not found
 
 
@@ -94,7 +93,7 @@ def _ensure_sentinelx_dir():
 # INSTALLATION FUNCTIONS
 # ============================================================================
 
-async def install_subfinder() -> Dict[str, Any]:
+async def install_subfinder() -> dict[str, Any]:
     """Install subfinder using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -114,7 +113,7 @@ async def install_subfinder() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_waybackurls() -> Dict[str, Any]:
+async def install_waybackurls() -> dict[str, Any]:
     """Install waybackurls using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -134,7 +133,7 @@ async def install_waybackurls() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_dalfox() -> Dict[str, Any]:
+async def install_dalfox() -> dict[str, Any]:
     """Install dalfox using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -154,7 +153,7 @@ async def install_dalfox() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_httpx() -> Dict[str, Any]:
+async def install_httpx() -> dict[str, Any]:
     """Install httpx using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -174,7 +173,7 @@ async def install_httpx() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_nuclei() -> Dict[str, Any]:
+async def install_nuclei() -> dict[str, Any]:
     """Install nuclei using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -194,7 +193,7 @@ async def install_nuclei() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_gau() -> Dict[str, Any]:
+async def install_gau() -> dict[str, Any]:
     """Install gau (getallurls) using Go."""
     _ensure_sentinelx_dir()
     try:
@@ -214,7 +213,7 @@ async def install_gau() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_nuclei_templates() -> Dict[str, Any]:
+async def install_nuclei_templates() -> dict[str, Any]:
     """Install nuclei vulnerability templates."""
     _ensure_sentinelx_dir()
     try:
@@ -247,10 +246,10 @@ async def install_nuclei_templates() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def install_all_tools() -> Dict[str, Any]:
+async def install_all_tools() -> dict[str, Any]:
     """Install all reconnaissance tools automatically."""
     results = {}
-    
+
     # Go-installed tools
     for tool_name, install_func in [
         ("subfinder", install_subfinder),
@@ -261,37 +260,38 @@ async def install_all_tools() -> Dict[str, Any]:
         ("gau", install_gau),
     ]:
         results[tool_name] = await install_func()
-    
+
     # Git-cloned tools
     try:
         _ensure_sentinelx_dir()
-        
+
+        bbr_path = os.path.join(SENTINELX_TOOLS_DIR, "BigBountyRecon")
         results["bigbountyrecon"] = {"status": "success" if os.path.exists(bbr_path) else "pending", "path": bbr_path}
-        
+
         # SubEnum
         se_path = os.path.join(SENTINELX_TOOLS_DIR, "SubEnum")
         if not os.path.exists(se_path):
-            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/bing0o/SubEnum", se_path], 
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/bing0o/SubEnum", se_path],
                           capture_output=True, timeout=120)
         results["subenum"] = {"status": "success" if os.path.exists(se_path) else "pending", "path": se_path}
-        
+
         # Sqlifinder
         sf_path = os.path.join(SENTINELX_TOOLS_DIR, "sqlifinder")
         if not os.path.exists(sf_path):
-            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/americo/sqlifinder", sf_path], 
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/americo/sqlifinder", sf_path],
                           capture_output=True, timeout=120)
         results["sqlifinder"] = {"status": "success" if os.path.exists(sf_path) else "pending", "path": sf_path}
-        
+
         # Nuclei templates
         nt_path = os.path.join(SENTINELX_TOOLS_DIR, "nuclei-templates")
         if not os.path.exists(nt_path):
-            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/projectdiscovery/nuclei-templates", nt_path], 
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/projectdiscovery/nuclei-templates", nt_path],
                           capture_output=True, timeout=300)
         results["nuclei-templates"] = {"status": "success" if os.path.exists(nt_path) else "pending", "path": nt_path}
-        
+
     except Exception as e:
         results["git_tools"] = {"status": "error", "error": str(e)}
-    
+
     return results
 
 
@@ -324,35 +324,35 @@ class ReconResult:
     """Structured result from reconnaissance operations."""
     tool: str
     target: str
-    findings: List[Dict[str, Any]]
-    errors: List[str]
+    findings: list[dict[str, Any]]
+    errors: list[str]
     execution_time: float
     raw_output: str = ""
     status: str = "ok"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
 
 class BigBountyReconTool:
     """
-    
+
     Performs reconnaissance using 58 different Google dorking techniques
     to discover endpoints, login pages, SQL errors, geoserver instances, etc.
-    
+
     Methodology from guide:
         site:*.domain.com inurl:"*admin | login" | inurl:.php | .asp
         site:*.domain.com intext:sql syntax near | intext:syntax error
         site:*.domain.com inurl:/geoserver/ows?service=wfs
-    
+
     Usage:
         result = await tool.scan("example.com")
     """
-    
+
     def __init__(self):
         self.name = "bigbountyrecon"
-    
+
     def is_available(self) -> bool:
         paths = [
         ]
@@ -360,22 +360,22 @@ class BigBountyReconTool:
             if os.path.exists(path):
                 return True
         return False
-    
+
     async def scan(self, target: str, dork_type: str = "all") -> "ReconResult":
         start_time = datetime.now()
         errors = []
         findings = []
         raw_output = ""
-        
+
         tool_paths = [
         ]
-        
+
         tool_path = None
         for path in tool_paths:
             if os.path.exists(path):
                 tool_path = path
                 break
-        
+
         if not tool_path:
             return ReconResult(
                 tool=self.name,
@@ -384,11 +384,11 @@ class BigBountyReconTool:
                 errors=errors,
                 execution_time=(datetime.now() - start_time).total_seconds()
             )
-        
+
         try:
             if platform.system() != "Windows":
                 os.chmod(tool_path, 0o755)
-            
+
             if platform.system() == "Windows":
                 cmd = [tool_path, target]
             else:
@@ -397,16 +397,16 @@ class BigBountyReconTool:
                     cmd = [mono_path, tool_path, target]
                 else:
                     cmd = [tool_path, target]
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             for line in raw_output.split('\n'):
                 if line.strip() and not line.startswith('['):
                     findings.append({
@@ -414,12 +414,12 @@ class BigBountyReconTool:
                         "value": line.strip(),
                         "dork_type": dork_type
                     })
-            
+
         except asyncio.TimeoutError:
             errors.append("Scan timed out after 300 seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=target,
@@ -428,9 +428,9 @@ class BigBountyReconTool:
             execution_time=(datetime.now() - start_time).total_seconds(),
             raw_output=raw_output
         )
-    
+
     @staticmethod
-    def get_dork_techniques() -> List[Dict[str, str]]:
+    def get_dork_techniques() -> list[dict[str, str]]:
         """Return list of Google dorking techniques from the guide."""
         return [
             {"name": "admin_login", "query": "site:*.{target} inurl:*admin|login*"},
@@ -449,24 +449,24 @@ class BigBountyReconTool:
 class SubFinderTool:
     """
     SubFinder - Passive subdomain enumeration tool.
-    
+
     Discovers subdomains using multiple passive sources:
     - VirusTotal, Shodan, Censys (with API keys)
     - crt.sh, CertSpotter
     - JSKY, ThreatCrowd, etc.
-    
+
     Methodology from guide:
         echo domain.com > target.txt
         subfinder -dL target.txt -all -recursive -o Subs01.txt
-    
+
     Usage:
         tool = SubFinderTool()
         result = await tool.scan("example.com")
     """
-    
+
     def __init__(self):
         self.name = "subfinder"
-    
+
     def is_available(self) -> bool:
         """Check if subfinder is installed."""
         path = _get_path_for_tool("subfinder")
@@ -482,7 +482,7 @@ class SubFinderTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
         target: str,
@@ -492,7 +492,7 @@ class SubFinderTool:
     ) -> "ReconResult":
         """
         Run subfinder subdomain enumeration.
-        
+
         Args:
             target: Target domain
             recursive: Enable recursive subdomain finding
@@ -503,7 +503,7 @@ class SubFinderTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -512,9 +512,9 @@ class SubFinderTool:
                 errors=["SubFinder not installed. Run: go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"],
                 execution_time=0
             )
-        
+
         output_file = _get_temp_path("subfinder_results.txt")
-        
+
         try:
             cmd = ["subfinder", "-d", target]
             if recursive:
@@ -522,20 +522,20 @@ class SubFinderTool:
             if all_sources:
                 cmd.append("-all")
             cmd.extend(["-o", output_file])
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse subdomains from output file
             try:
                 if os.path.exists(output_file):
-                    with open(output_file, "r", encoding='utf-8', errors='replace') as f:
+                    with open(output_file, encoding='utf-8', errors='replace') as f:
                         for line in f:
                             subdomain = line.strip()
                             if subdomain:
@@ -545,8 +545,8 @@ class SubFinderTool:
                                     "source": "subfinder"
                                 })
             except Exception as e:
-                errors.append(f"Error reading results: {str(e)}")
-            
+                errors.append(f"Error reading results: {e!s}")
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
@@ -557,7 +557,7 @@ class SubFinderTool:
                     os.remove(output_file)
             except:
                 pass
-        
+
         return ReconResult(
             tool=self.name,
             target=target,
@@ -571,19 +571,19 @@ class SubFinderTool:
 class SubEnumTool:
     """
     SubEnum - Multi-source subdomain enumeration.
-    
+
     Enumerates subdomains using multiple sources and tools:
     - wayback, crt, abuseipdb, bufferover
     - Findomain, Subfinder, Amass, Assetfinder
-    
+
     Methodology from guide:
         subenum -l target.txt -u wayback,crt,abuseipdb,bufferover,Findomain,Subfinder,Amass,Assetfinder -o Subs02.txt
     """
-    
+
     def __init__(self):
         self.name = "subenum"
         self.install_url = "https://github.com/bing0o/SubEnum"
-    
+
     def is_available(self) -> bool:
         """Check if SubEnum is installed."""
         paths = [
@@ -594,16 +594,16 @@ class SubEnumTool:
             if os.path.exists(path):
                 return True
         return False
-    
+
     async def scan(
         self,
         target: str,
-        sources: List[str] = None,            output_file: str = None,
+        sources: list[str] = None,            output_file: str = None,
         timeout: int = 600
     ) -> "ReconResult":
         """
         Run SubEnum subdomain enumeration.
-        
+
         Args:
             target: Target domain or file with domains
             sources: List of sources to use
@@ -614,21 +614,21 @@ class SubEnumTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if sources is None:
             sources = ["wayback", "crt", "abuseipdb", "bufferover", "Findomain", "Subfinder", "Amass", "Assetfinder"]
-        
+
         tool_paths = [
             os.path.join(SENTINELX_TOOLS_DIR, "SubEnum", "subenum.sh"),
             os.path.expanduser("~/SubEnum/subenum.sh"),
         ]
-        
+
         tool_path = None
         for path in tool_paths:
             if os.path.exists(path):
                 tool_path = path
                 break
-        
+
         if not tool_path:
             errors.append(f"SubEnum not found. Install from: {self.install_url}")
             return ReconResult(
@@ -638,12 +638,12 @@ class SubEnumTool:
                 errors=errors,
                 execution_time=(datetime.now() - start_time).total_seconds()
             )
-        
+
         try:
             # Make executable
             if platform.system() != "Windows":
                 os.chmod(tool_path, 0o755)
-            
+
             # Create target file if it's a single domain (use cross-platform temp dir)
             temp_dir = tempfile.gettempdir()
             target_file = os.path.join(temp_dir, "subenum_target.txt")
@@ -653,24 +653,24 @@ class SubEnumTool:
                 target_to_use = target_file
             else:
                 target_to_use = target
-            
+
             sources_str = ",".join(sources)
             output_file = output_file or _get_temp_path("subenum_results.txt")
             cmd = [tool_path, "-l", target_to_use, "-u", sources_str, "-o", output_file]
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse output file
             try:
                 if os.path.exists(output_file):
-                    with open(output_file, "r", encoding='utf-8', errors='replace') as f:
+                    with open(output_file, encoding='utf-8', errors='replace') as f:
                         for line in f:
                             subdomain = line.strip()
                             if subdomain:
@@ -680,13 +680,13 @@ class SubEnumTool:
                                     "source": "subenum"
                                 })
             except Exception as e:
-                errors.append(f"Error reading results: {str(e)}")
-            
+                errors.append(f"Error reading results: {e!s}")
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=target,
@@ -700,19 +700,19 @@ class SubEnumTool:
 class WaybackUrlsTool:
     """
     Waybackurls - Collect historical URLs from Wayback Machine.
-    
+
     Retrieves archived URLs for a domain, useful for finding:
     - Old endpoints that may still be accessible
     - Parameters for testing
     - JavaScript files
-    
+
     Methodology from guide:
         cat AliveSubs.txt | waybackurls | tee urls.txt
     """
-    
+
     def __init__(self):
         self.name = "waybackurls"
-    
+
     def is_available(self) -> bool:
         """Check if waybackurls is installed."""
         path = _get_path_for_tool("waybackurls")
@@ -728,16 +728,16 @@ class WaybackUrlsTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
-        domains: List[str],
+        domains: list[str],
         output_file: str = None,
         timeout: int = 300
     ) -> "ReconResult":
         """
         Collect Wayback URLs for domains.
-        
+
         Args:
             domains: List of domains to query
             output_file: Optional output file
@@ -747,7 +747,7 @@ class WaybackUrlsTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -756,10 +756,10 @@ class WaybackUrlsTool:
                 errors=["waybackurls not installed. Run: go install github.com/tomnomnom/waybackurls@latest"],
                 execution_time=0
             )
-        
+
         try:
             input_data = "\n".join(domains).encode()
-            
+
             proc = await asyncio.create_subprocess_exec(
                 "waybackurls",
                 stdin=asyncio.subprocess.PIPE,
@@ -770,9 +770,9 @@ class WaybackUrlsTool:
                 proc.communicate(input=input_data),
                 timeout=timeout
             )
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             for line in raw_output.split('\n'):
                 if line.strip():
                     url = line.strip()
@@ -781,16 +781,16 @@ class WaybackUrlsTool:
                         "value": url,
                         "source": "wayback_machine"
                     })
-            
+
             if output_file:
                 with open(output_file, "w") as f:
                     f.write(raw_output)
-            
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=",".join(domains),
@@ -804,16 +804,16 @@ class WaybackUrlsTool:
 class GauTool:
     """
     Gau - Get All URLs including from AlienVault OTX, Common Crawl, etc.
-    
+
     Alternative to waybackurls that fetches from multiple sources.
-    
+
     Methodology from guide:
         cat AliveSubs.txt | gau | tee urls.txt
     """
-    
+
     def __init__(self):
         self.name = "gau"
-    
+
     def is_available(self) -> bool:
         """Check if gau is installed."""
         path = _get_path_for_tool("gau")
@@ -829,10 +829,10 @@ class GauTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
-        domains: List[str],
+        domains: list[str],
         output_file: str = None,
         timeout: int = 300
     ) -> "ReconResult":
@@ -841,7 +841,7 @@ class GauTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -850,11 +850,11 @@ class GauTool:
                 errors=["gau not installed. Run: go install github.com/lc/gau/v2/cmd/gau@latest"],
                 execution_time=0
             )
-        
+
         try:
             for domain in domains:
                 input_data = domain.encode()
-                
+
                 proc = await asyncio.create_subprocess_exec(
                     "gau",
                     stdin=asyncio.subprocess.PIPE,
@@ -865,10 +865,10 @@ class GauTool:
                     proc.communicate(input=input_data),
                     timeout=timeout
                 )
-                
+
                 domain_output = stdout.decode('utf-8', errors='replace')
                 raw_output += domain_output
-                
+
                 for line in domain_output.split('\n'):
                     if line.strip():
                         findings.append({
@@ -876,16 +876,16 @@ class GauTool:
                             "value": line.strip(),
                             "source": "gau"
                         })
-            
+
             if output_file:
                 with open(output_file, "w") as f:
                     f.write(raw_output)
-            
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=",".join(domains),
@@ -899,16 +899,16 @@ class GauTool:
 class HttpxTool:
     """
     Httpx - Fast HTTP probe tool.
-    
+
     Checks if subdomains are alive/responsive.
-    
+
     Methodology from guide:
         cat AllSubs.txt | httpx -o AliveSubs.txt
     """
-    
+
     def __init__(self):
         self.name = "httpx"
-    
+
     def is_available(self) -> bool:
         """Check if httpx is installed."""
         # Check ~/.sentinelx/tools/ and GOPATH/bin first
@@ -926,16 +926,16 @@ class HttpxTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
-        targets: List[str],
+        targets: list[str],
         output_file: str = None,
         timeout: int = 300
     ) -> "ReconResult":
         """
         Check which targets are alive.
-        
+
         Args:
             targets: List of URLs or domains to check
             output_file: Optional output file
@@ -945,7 +945,7 @@ class HttpxTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -954,30 +954,30 @@ class HttpxTool:
                 errors=["httpx not installed. Run: go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"],
                 execution_time=0
             )
-        
+
         targets_file = _get_temp_path("httpx_targets.txt")
         results_file = output_file or _get_temp_path("httpx_results.txt")
-        
+
         try:
             # Write targets to temp file
             with open(targets_file, "w") as f:
                 f.write("\n".join(targets))
-            
+
             cmd = ["httpx", "-list", targets_file, "-json", "-o", results_file]
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse JSON output
             try:
                 if os.path.exists(results_file):
-                    with open(results_file, "r", encoding='utf-8', errors='replace') as f:
+                    with open(results_file, encoding='utf-8', errors='replace') as f:
                         for line in f:
                             if line.strip():
                                 try:
@@ -992,8 +992,8 @@ class HttpxTool:
                                 except:
                                     pass
             except Exception as e:
-                errors.append(f"Error parsing results: {str(e)}")
-            
+                errors.append(f"Error parsing results: {e!s}")
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
@@ -1004,7 +1004,7 @@ class HttpxTool:
                     os.remove(targets_file)
             except:
                 pass
-        
+
         return ReconResult(
             tool=self.name,
             target="multiple",
@@ -1018,21 +1018,21 @@ class HttpxTool:
 class DalfoxTool:
     """
     Dalfox - XSS vulnerability scanner.
-    
+
     Fast and accurate XSS detection and analysis tool.
     Supports:
     - Single URL testing
     - File-based testing (bulk)
     - Pipeline input (stdin)
-    
+
     Methodology from guide:
         cat urls.txt | uro | gf xss > xss.txt
         dalfox file xss.txt | tee XSSvulnerable.txt
     """
-    
+
     def __init__(self):
         self.name = "dalfox"
-    
+
     def is_available(self) -> bool:
         """Check if dalfox is installed."""
         path = _get_path_for_tool("dalfox")
@@ -1048,7 +1048,7 @@ class DalfoxTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
         target: str = None,
@@ -1058,7 +1058,7 @@ class DalfoxTool:
     ) -> "ReconResult":
         """
         Run Dalfox XSS scan.
-        
+
         Args:
             target: Target URL (for url mode)
             wordlist_file: File with URLs to test (for file mode)
@@ -1069,7 +1069,7 @@ class DalfoxTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -1078,29 +1078,29 @@ class DalfoxTool:
                 errors=["Dalfox not installed. Run: go install github.com/hahwul/dalfox/v2@latest"],
                 execution_time=0
             )
-        
+
         try:
             cmd = ["dalfox"]
-            
+
             if mode == "url" and target:
                 cmd.extend(["url", target])
             elif mode == "file" and wordlist_file:
                 cmd.extend(["file", wordlist_file])
             elif mode == "pipe":
                 cmd.append("pipe")
-            
+
             dalfox_output = _get_temp_path("dalfox_results.txt")
             cmd.extend(["--output", dalfox_output])
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse dalfox output
             for line in raw_output.split('\n'):
                 if "[POTENTIAL" in line.upper() or "XSS" in line.upper() or "found" in line.lower():
@@ -1109,11 +1109,11 @@ class DalfoxTool:
                         "value": line.strip(),
                         "tool": "dalfox"
                     })
-            
+
             # Read output file
             try:
                 if os.path.exists(dalfox_output):
-                    with open(dalfox_output, "r", encoding='utf-8', errors='replace') as f:
+                    with open(dalfox_output, encoding='utf-8', errors='replace') as f:
                         for line in f:
                             if line.strip():
                                 findings.append({
@@ -1123,12 +1123,12 @@ class DalfoxTool:
                                 })
             except:
                 pass
-            
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=target or wordlist_file or "stdin",
@@ -1142,17 +1142,17 @@ class DalfoxTool:
 class SqlifinderTool:
     """
     Sqlifinder - SQL injection vulnerability finder.
-    
+
     Discovers SQL injection vulnerabilities on target domains.
-    
+
     Methodology from guide:
         python3 sqlifinder.py -d domain.com
     """
-    
+
     def __init__(self):
         self.name = "sqlifinder"
         self.install_url = "https://github.com/americo/sqlifinder"
-    
+
     def is_available(self) -> bool:
         """Check if sqlifinder is installed."""
         paths = [
@@ -1163,7 +1163,7 @@ class SqlifinderTool:
             if os.path.exists(path):
                 return True
         return False
-    
+
     async def scan(
         self,
         target: str = None,
@@ -1172,7 +1172,7 @@ class SqlifinderTool:
     ) -> "ReconResult":
         """
         Run Sqlifinder scan.
-        
+
         Args:
             target: Target domain (when using -d option)
             target_file: File with targets (when using -l option)
@@ -1182,18 +1182,18 @@ class SqlifinderTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         tool_paths = [
             os.path.join(SENTINELX_TOOLS_DIR, "sqlifinder", "sqlifinder.py"),
             os.path.expanduser("~/sqlifinder/sqlifinder.py"),
         ]
-        
+
         tool_path = None
         for path in tool_paths:
             if os.path.exists(path):
                 tool_path = path
                 break
-        
+
         if not tool_path:
             errors.append(f"Sqlifinder not found. Install from: {self.install_url}")
             return ReconResult(
@@ -1203,24 +1203,24 @@ class SqlifinderTool:
                 errors=errors,
                 execution_time=(datetime.now() - start_time).total_seconds()
             )
-        
+
         try:
             cmd = ["python3", tool_path]
-            
+
             if target:
                 cmd.extend(["-d", target])
             elif target_file:
                 cmd.extend(["-l", target_file])
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse SQL injection findings
             for line in raw_output.split('\n'):
                 if "SQL" in line.upper() or "INJECT" in line.upper() or "sqli" in line.lower():
@@ -1235,12 +1235,12 @@ class SqlifinderTool:
                         "value": line.strip(),
                         "tool": "sqlifinder"
                     })
-            
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
             errors.append(str(e))
-        
+
         return ReconResult(
             tool=self.name,
             target=target or target_file or "unknown",
@@ -1254,17 +1254,17 @@ class SqlifinderTool:
 class NucleiTool:
     """
     Nuclei - Vulnerability scanner based on templates.
-    
+
     Scans URLs using predefined vulnerability templates.
-    
+
     Methodology from guide:
         nuclei -list urls.txt -t /fuzzing-templates
         nuclei -list AliveSubs.txt -t /nuclei-templates/vulnerabilities -t /nuclei-templates/cves
     """
-    
+
     def __init__(self):
         self.name = "nuclei"
-    
+
     def is_available(self) -> bool:
         """Check if nuclei is installed."""
         path = _get_path_for_tool("nuclei")
@@ -1280,19 +1280,19 @@ class NucleiTool:
             return result.returncode == 0
         except:
             return False
-    
+
     async def scan(
         self,
-        targets: List[str],
-        templates: List[str] = None,
-        tags: List[str] = None,
+        targets: list[str],
+        templates: list[str] = None,
+        tags: list[str] = None,
         output_file: str = None,
-        severity: List[str] = None,
+        severity: list[str] = None,
         timeout: int = 600
     ) -> "ReconResult":
         """
         Run nuclei vulnerability scan.
-        
+
         Args:
             targets: List of URLs to scan
             templates: Specific template paths to use
@@ -1305,7 +1305,7 @@ class NucleiTool:
         errors = []
         findings = []
         raw_output = ""
-        
+
         if not self.is_available():
             return ReconResult(
                 tool=self.name,
@@ -1314,39 +1314,39 @@ class NucleiTool:
                 errors=["nuclei not installed. Run: go install -v github.com/projectdiscovery/nuclei/v2@latest"],
                 execution_time=0
             )
-        
+
         targets_file = _get_temp_path("nuclei_targets.txt")
-        
+
         try:
             # Write targets to temp file
             with open(targets_file, "w") as f:
                 f.write("\n".join(targets))
-            
+
             cmd = ["nuclei", "-list", targets_file, "-json"]
-            
+
             if output_file:
                 cmd.extend(["-o", output_file])
-            
+
             if templates:
                 for t in templates:
                     cmd.extend(["-t", t])
-            
+
             if tags:
                 for tag in tags:
                     cmd.extend(["-tags", tag])
-            
+
             if severity:
                 cmd.extend(["-severity", ",".join(severity)])
-            
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            
+
             raw_output = stdout.decode('utf-8', errors='replace')
-            
+
             # Parse JSON output
             for line in raw_output.split('\n'):
                 if line.strip() and line.startswith('{'):
@@ -1363,11 +1363,11 @@ class NucleiTool:
                         })
                     except:
                         pass
-            
+
             if output_file and raw_output:
                 with open(output_file, "w") as f:
                     f.write(raw_output)
-            
+
         except asyncio.TimeoutError:
             errors.append(f"Scan timed out after {timeout} seconds")
         except Exception as e:
@@ -1378,7 +1378,7 @@ class NucleiTool:
                     os.remove(targets_file)
             except:
                 pass
-        
+
         return ReconResult(
             tool=self.name,
             target="multiple",
@@ -1396,7 +1396,7 @@ class NucleiTool:
 class ReconnaissanceWorkflow:
     """
     Integrated reconnaissance workflow following the methodology from the guide.
-    
+
     Flow:
     2. Subdomain enumeration (SubFinder + SubEnum)
     3. HTTP probing (httpx) to find alive hosts
@@ -1406,7 +1406,7 @@ class ReconnaissanceWorkflow:
     7. SQL injection testing (Sqlifinder)
     8. Nuclei vulnerability scanning
     """
-    
+
     def __init__(self):
         self.subfinder = SubFinderTool()
         self.subenum = SubEnumTool()
@@ -1416,8 +1416,8 @@ class ReconnaissanceWorkflow:
         self.sqlifinder = SqlifinderTool()
         self.httpx = HttpxTool()
         self.nuclei = NucleiTool()
-    
-    def get_available_tools(self) -> Dict[str, bool]:
+
+    def get_available_tools(self) -> dict[str, bool]:
         """Get status of all reconnaissance tools."""
         return {
             "bigbountyrecon": self.bigbountyrecon.is_available(),
@@ -1430,28 +1430,28 @@ class ReconnaissanceWorkflow:
             "httpx": self.httpx.is_available(),
             "nuclei": self.nuclei.is_available(),
         }
-    
-    async def run_full_recon(self, target: str) -> Dict[str, ReconResult]:
+
+    async def run_full_recon(self, target: str) -> dict[str, ReconResult]:
         """
         Run the full reconnaissance workflow.
-        
+
         Args:
             target: Target domain (e.g., "example.com")
-        
+
         Returns:
             Dictionary of results from each tool
         """
         results = {}
-        
+
         # Step 1: Google Dorking
         print(f"[+] Running Google Dorking on {target}...")
         results["bigbountyrecon"] = await self.bigbountyrecon.scan(target)
-        
+
         # Step 2: Subdomain Enumeration
         print(f"[+] Enumerating subdomains for {target}...")
         results["subfinder"] = await self.subfinder.scan(target)
         results["subenum"] = await self.subenum.scan(target)
-        
+
         # Combine and deduplicate subdomains
         all_subdomains = set()
         for r in [results.get("subfinder"), results.get("subenum")]:
@@ -1459,40 +1459,40 @@ class ReconnaissanceWorkflow:
                 for f in r.findings:
                     if f.get("type") == "subdomain":
                         all_subdomains.add(f.get("value"))
-        
+
         if not all_subdomains:
             print(f"[-] No subdomains found for {target}")
             return results
-        
+
         print(f"[+] Found {len(all_subdomains)} subdomains")
-        
+
         # Step 3: HTTP probing to find alive hosts
         print(f"[+] Probing {len(all_subdomains)} subdomains for alive hosts...")
         subdomains_list = list(all_subdomains)
         results["httpx"] = await self.httpx.scan(subdomains_list)
-        
+
         alive_hosts = [f["url"] for f in results["httpx"].findings if f.get("type") == "alive_host"]
         print(f"[+] Found {len(alive_hosts)} alive hosts")
-        
+
         if not alive_hosts:
-            print(f"[-] No alive hosts found")
+            print("[-] No alive hosts found")
             return results
-        
+
         # Step 4: Collect URLs with waybackurls
-        print(f"[+] Collecting URLs from Wayback Machine...")
+        print("[+] Collecting URLs from Wayback Machine...")
         results["waybackurls"] = await self.waybackurls.scan(alive_hosts)
         print(f"[+] Found {len(results['waybackurls'].findings)} URLs")
-        
+
         # Step 5: SQL Injection Testing
         print(f"[+] Running SQL injection scan on {target}...")
         results["sqlifinder"] = await self.sqlifinder.scan(target=target)
-        
+
         return results
-    
-    async def run_recon_phase(self, phase: str, target: str, targets: List[str] = None) -> "ReconResult":
+
+    async def run_recon_phase(self, phase: str, target: str, targets: list[str] = None) -> "ReconResult":
         """
         Run a specific reconnaissance phase.
-        
+
         Args:
             phase: Phase name - "dorking", "subdomains", "http_probing", "urls", "xss", "sqli", "vulnerabilities"
             target: Target domain
@@ -1523,8 +1523,8 @@ class ReconnaissanceWorkflow:
                 errors=[f"Unknown phase: {phase}"],
                 execution_time=0
             )
-    
-    def _write_urls_to_file(self, urls: List[str]) -> str:
+
+    def _write_urls_to_file(self, urls: list[str]) -> str:
         """Write URLs to a temp file for tool input."""
         path = _get_temp_path("recon_urls.txt")
         with open(path, "w") as f:
@@ -1536,7 +1536,7 @@ class ReconnaissanceWorkflow:
 # GLOBAL INSTANCES
 # ============================================================================
 
-_recon_workflow: Optional[ReconnaissanceWorkflow] = None
+_recon_workflow: ReconnaissanceWorkflow | None = None
 
 def get_recon_workflow() -> ReconnaissanceWorkflow:
     """Get or create global reconnaissance workflow instance."""

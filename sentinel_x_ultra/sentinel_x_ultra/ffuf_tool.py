@@ -13,13 +13,13 @@ Features:
 """
 
 import asyncio
-import subprocess
 import json
-import re
 import os
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+import re
+import subprocess
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -27,22 +27,22 @@ class FfufResult:
     """Structured ffuf scan result"""
     target: str
     mode: str
-    findings: List[Dict[str, Any]]
-    status_codes: Dict[int, int]
+    findings: list[dict[str, Any]]
+    status_codes: dict[int, int]
     execution_time_seconds: float
     requests_sent: int
     tool_version: str
-    errors: List[str]
+    errors: list[str]
 
 
 class FfufTool:
     """FFUF tool integration for Sentinel-X"""
-    
+
     def __init__(self):
         self.name = "ffuf"
         self.supported_modes = ["directory", "subdomain", "vhost", "parameter", "url"]
-        self.version_cache: Optional[str] = None
-        
+        self.version_cache: str | None = None
+
     def is_available(self) -> bool:
         """Check if ffuf is installed and accessible"""
         # Check ~/.sentinelx/tools/ first
@@ -62,12 +62,12 @@ class FfufTool:
             return result.returncode == 0
         except Exception:
             return False
-    
+
     def get_version(self) -> str:
         """Get ffuf version string"""
         if self.version_cache:
             return self.version_cache
-            
+
         try:
             result = subprocess.run(
                 ['ffuf', '-V'],
@@ -84,7 +84,7 @@ class FfufTool:
         except Exception:
             pass
         return "unknown"
-    
+
     async def scan(
         self,
         target: str,
@@ -100,7 +100,7 @@ class FfufTool:
     ) -> FfufResult:
         """
         Execute an ffuf scan with structured parameters.
-        
+
         Args:
             target: Target URL or host
             mode: Fuzzing mode (directory, subdomain, vhost, parameter)
@@ -114,14 +114,14 @@ class FfufTool:
             rate: Requests per second limit (0 = unlimited)
         """
         findings = []
-        status_codes_count: Dict[int, int] = {}
+        status_codes_count: dict[int, int] = {}
         errors = []
         start_time = datetime.now()
         requests_sent = 0
-        
+
         # Build ffuf command
         cmd = ['ffuf']
-        
+
         # Mode-specific options
         if mode == "directory":
             cmd.extend(['-w', wordlist or '/usr/share/wordlists/dirb/common.txt'])
@@ -137,39 +137,39 @@ class FfufTool:
             cmd.extend(['-w', wordlist or '/usr/share/wordlists/dirb/common.txt'])
             cmd.extend(['-u', target])
             cmd.append('-mode', 'clusterbomb')  # Parameter combinations
-        
+
         # Output
         cmd.extend(['-o', 'ffuf_results.json'])
         cmd.extend(['-of', 'json'])
-        
+
         # Threads
         cmd.append(f'-t{threads}')
-        
+
         # Status codes filter
         cmd.extend(['-s'])  # Silent mode (less output)
-        
+
         # Auto-calibration
         if auto_calibration:
             cmd.append('-ac')
-        
+
         # Rate limiting
         if rate > 0:
             cmd.extend(['-rate', str(rate)])
-        
+
         # Follow redirects
         if follow_redirects:
             cmd.append('-r')
-        
+
         # Timeout (ffuf uses -maxtime瑕)
         cmd.append(f'-maxtime {timeout}')
-        
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(),
@@ -188,17 +188,17 @@ class FfufTool:
                     tool_version=self.get_version(),
                     errors=errors
                 )
-            
+
             if proc.returncode not in [0, 1]:  # 0=success, 1=findings, anything else=error
                 error_output = stderr.decode() if stderr else ""
                 if error_output:
                     errors.append(error_output[:500])
-            
+
             # Parse JSON output
             try:
-                with open('ffuf_results.json', 'r') as f:
+                with open('ffuf_results.json') as f:
                     json_results = json.load(f)
-                
+
                 for result in json_results.get('results', []):
                     findings.append({
                         'url': result.get('url', ''),
@@ -208,28 +208,28 @@ class FfufTool:
                         'lines': result.get('lines', 0),
                         'content_type': result.get('content-type', ''),
                     })
-                    
+
                     code = result.get('status', 0)
                     status_codes_count[code] = status_codes_count.get(code, 0) + 1
-                    
+
                 requests_sent = json_results.get('config', {}).get('total_requests', 0)
-                
+
             except Exception:
                 # JSON parsing failed
                 pass
-            
+
         except Exception as e:
             errors.append(str(e)[:200])
-        
+
         execution_time = (datetime.now() - start_time).total_seconds()
-        
+
         # Clean up temp file
         try:
             if os.path.exists('ffuf_results.json'):
                 os.remove('ffuf_results.json')
         except Exception:
             pass
-        
+
         return FfufResult(
             target=target,
             mode=mode,
@@ -240,8 +240,8 @@ class FfufTool:
             tool_version=self.get_version(),
             errors=errors
         )
-    
-    def get_capabilities(self) -> Dict[str, Any]:
+
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -274,10 +274,9 @@ class FfufTool:
         }
 
 
-import os
 
 # Global instance for tool registry
-_ffuf_tool: Optional[FfufTool] = None
+_ffuf_tool: FfufTool | None = None
 
 
 def get_ffuf_tool() -> FfufTool:

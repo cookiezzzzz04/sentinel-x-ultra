@@ -10,16 +10,15 @@ All tools share the same architecture:
 """
 
 import asyncio
-import subprocess
-import re
-import os
 import json
-import tempfile
+import os
 import platform
-from typing import Dict, List, Any, Optional, Tuple
+import re
+import subprocess
+import tempfile
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
-
+from typing import Any
 
 # ============================================================================
 # UTILITY — Shared path resolution
@@ -28,7 +27,7 @@ from dataclasses import dataclass, asdict
 SENTINELX_TOOLS_DIR = os.path.expanduser("~/.sentinelx/tools")
 
 
-def _find_tool(tool_name: str, extra_paths: Optional[List[str]] = None) -> Optional[str]:
+def _find_tool(tool_name: str, extra_paths: list[str] | None = None) -> str | None:
     """Find a tool executable across multiple locations."""
     # 1. Check ~/.sentinelx/tools/
     for name in [tool_name, f"{tool_name}.exe"]:
@@ -76,7 +75,7 @@ def _find_tool(tool_name: str, extra_paths: Optional[List[str]] = None) -> Optio
 
 
 def _check_tool(tool_name: str, version_flag: str = "--version",
-                extra_paths: Optional[List[str]] = None) -> Tuple[bool, str]:
+                extra_paths: list[str] | None = None) -> tuple[bool, str]:
     """Check if a tool is available and get its version."""
     path = _find_tool(tool_name, extra_paths)
     if not path:
@@ -97,13 +96,15 @@ def _check_tool(tool_name: str, version_flag: str = "--version",
 @dataclass
 class AmassResult:
     target: str
-    subdomains: List[str]
-    dns_records: List[Dict[str, Any]]
+    subdomains: list[str]
+    dns_records: list[dict[str, Any]]
     execution_time_seconds: float
     tool_version: str
     raw_output: str
-    errors: List[str]
-    def to_dict(self) -> Dict[str, Any]: return asdict(self)
+    errors: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class AmassTool:
@@ -121,11 +122,11 @@ class AmassTool:
         errors, subdomains, dns_records, start = [], [], [], datetime.now()
         path = _find_tool("amass")
         if not path:
-            return AmassResult(target, [], [], 0, "not_found", "", [f"amass not found in PATH or ~/.sentinelx/tools/"])
+            return AmassResult(target, [], [], 0, "not_found", "", ["amass not found in PATH or ~/.sentinelx/tools/"])
         try:
-            cmd = [path, mode == "passive" and "enum" or "enum", "-d", target, "-json", "-"]
+            cmd = [path, (mode == "passive" and "enum") or "enum", "-d", target, "-json", "-"]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             for line in raw.split("\n"):
                 if line.strip():
@@ -145,13 +146,22 @@ class AmassTool:
         return AmassResult(target, list(set(subdomains)), dns_records,
                           (datetime.now() - start).total_seconds(), self.get_version(), "", errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "amass", "available": self.is_available(), "modes": ["passive", "active", "intel"], "features": ["dns_enumeration", "subdomain_discovery", "network_mapping"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "amass",
+            "available": self.is_available(),
+            "modes": ["passive", "active", "intel"],
+            "features": ["dns_enumeration", "subdomain_discovery", "network_mapping"],
+        }
 
 
-_amass_tool: Optional[AmassTool] = None
+_amass_tool: AmassTool | None = None
+
+
 def get_amass_tool() -> AmassTool:
     global _amass_tool
-    if _amass_tool is None: _amass_tool = AmassTool()
+    if _amass_tool is None:
+        _amass_tool = AmassTool()
     return _amass_tool
 
 
@@ -161,16 +171,27 @@ def get_amass_tool() -> AmassTool:
 
 @dataclass
 class Sublist3rResult:
-    target: str; subdomains: List[str]; execution_time_seconds: float; tool_version: str; raw_output: str; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    subdomains: list[str]
+    execution_time_seconds: float
+    tool_version: str
+    raw_output: str
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class Sublist3rTool:
-    def __init__(self): self.name = "sublist3r"
+    def __init__(self):
+        self.name = "sublist3r"
+
     def is_available(self) -> bool:
         return _find_tool("sublist3r") is not None or os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "Sublist3r", "sublist3r.py"))
 
-    def get_version(self) -> str: _, v = _check_tool("sublist3r"); return v
+    def get_version(self) -> str:
+        _, v = _check_tool("sublist3r")
+        return v
 
     async def scan(self, target: str, timeout_sec: int = 120) -> Sublist3rResult:
         errors, subdomains, start = [], [], datetime.now()
@@ -178,23 +199,38 @@ class Sublist3rTool:
         if not path:
             return Sublist3rResult(target, [], 0, "not_found", "", ["sublist3r not found"])
         try:
-            cmd = ["python3" if path.endswith(".py") else path, path, "-d", target] if path.endswith(".py") else [path, "-d", target]
+            if path.endswith(".py"):
+                cmd = ["python3", path, "-d", target]
+            else:
+                cmd = [path, "-d", target]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             for line in raw.split("\n"):
                 m = re.search(r'([a-zA-Z0-9._-]+\.' + re.escape(target) + ')', line)
-                if m and m.group(1) not in subdomains: subdomains.append(m.group(1))
-        except asyncio.TimeoutError: errors.append(f"Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return Sublist3rResult(target, subdomains, (datetime.now()-start).total_seconds(), self.get_version(), "", errors)
+                if m and m.group(1) not in subdomains:
+                    subdomains.append(m.group(1))
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return Sublist3rResult(target, subdomains, (datetime.now() - start).total_seconds(), self.get_version(), "", errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "sublist3r", "available": self.is_available(), "features": ["subdomain_enumeration", "passive_discovery"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "sublist3r",
+            "available": self.is_available(),
+            "features": ["subdomain_enumeration", "passive_discovery"],
+        }
 
-_sublist3r_tool: Optional[Sublist3rTool] = None
+
+_sublist3r_tool: Sublist3rTool | None = None
+
+
 def get_sublist3r_tool() -> Sublist3rTool:
     global _sublist3r_tool
-    if _sublist3r_tool is None: _sublist3r_tool = Sublist3rTool()
+    if _sublist3r_tool is None:
+        _sublist3r_tool = Sublist3rTool()
     return _sublist3r_tool
 
 
@@ -204,24 +240,38 @@ def get_sublist3r_tool() -> Sublist3rTool:
 
 @dataclass
 class KnockpyResult:
-    target: str; subdomains: List[Dict[str, Any]]; wildcard: bool; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    subdomains: list[dict[str, Any]]
+    wildcard: bool
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class KnockpyTool:
-    def __init__(self): self.name = "knockpy"
+    def __init__(self):
+        self.name = "knockpy"
+
     def is_available(self) -> bool:
         return _find_tool("knockpy") is not None or os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "knockpy", "knockpy.py"))
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, target: str, wordlist: Optional[str] = None, timeout_sec: int = 180) -> KnockpyResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, target: str, wordlist: str | None = None, timeout_sec: int = 180) -> KnockpyResult:
         errors, subdomains, start = [], [], datetime.now()
         path = _find_tool("knockpy") or os.path.join(SENTINELX_TOOLS_DIR, "knockpy", "knockpy.py")
         if not path:
             return KnockpyResult(target, [], False, 0, ["knockpy not found"])
         try:
-            cmd = ["python3", path, target] if path.endswith(".py") else [path, target]
-            if wordlist: cmd.extend(["--wordlist", wordlist])
+            if path.endswith(".py"):
+                cmd = ["python3", path, target]
+            else:
+                cmd = [path, target]
+            if wordlist:
+                cmd.extend(["--wordlist", wordlist])
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -230,16 +280,27 @@ class KnockpyTool:
                     parts = line.split("=>")
                     if len(parts) >= 2:
                         subdomains.append({"subdomain": parts[0].strip(), "resolves_to": parts[1].strip()})
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return KnockpyResult(target, subdomains, False, (datetime.now()-start).total_seconds(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return KnockpyResult(target, subdomains, False, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "knockpy", "available": self.is_available(), "features": ["subdomain_discovery", "wildcard_detection"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "knockpy",
+            "available": self.is_available(),
+            "features": ["subdomain_discovery", "wildcard_detection"],
+        }
 
-_knockpy_tool: Optional[KnockpyTool] = None
+
+_knockpy_tool: KnockpyTool | None = None
+
+
 def get_knockpy_tool() -> KnockpyTool:
     global _knockpy_tool
-    if _knockpy_tool is None: _knockpy_tool = KnockpyTool()
+    if _knockpy_tool is None:
+        _knockpy_tool = KnockpyTool()
     return _knockpy_tool
 
 
@@ -249,24 +310,35 @@ def get_knockpy_tool() -> KnockpyTool:
 
 @dataclass
 class DnscanResult:
-    target: str; subdomains: List[str]; a_records: List[Dict[str, str]]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    subdomains: list[str]
+    a_records: list[dict[str, str]]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class DnscanTool:
-    def __init__(self): self.name = "dnscan"
+    def __init__(self):
+        self.name = "dnscan"
+
     def is_available(self) -> bool:
         return _find_tool("dnscan") is not None
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, target: str, wordlist: Optional[str] = None, timeout_sec: int = 300) -> DnscanResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, target: str, wordlist: str | None = None, timeout_sec: int = 300) -> DnscanResult:
         errors, subdomains, a_records, start = [], [], [], datetime.now()
         path = _find_tool("dnscan")
         if not path:
             return DnscanResult(target, [], [], 0, ["dnscan not found"])
         try:
             cmd = [path, "-d", target]
-            if wordlist: cmd.extend(["-w", wordlist])
+            if wordlist:
+                cmd.extend(["-w", wordlist])
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -275,18 +347,29 @@ class DnscanTool:
                     parts = line.split()
                     for i, p in enumerate(parts):
                         if p == "A:" and i + 1 < len(parts):
-                            subdomains.append(parts[i-1] if i > 0 else target)
-                            a_records.append({"subdomain": parts[i-1] if i > 0 else target, "ip": parts[i+1]})
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return DnscanResult(target, list(set(subdomains)), a_records, (datetime.now()-start).total_seconds(), errors)
+                            subdomains.append(parts[i - 1] if i > 0 else target)
+                            a_records.append({"subdomain": parts[i - 1] if i > 0 else target, "ip": parts[i + 1]})
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return DnscanResult(target, list(set(subdomains)), a_records, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "dnscan", "available": self.is_available(), "features": ["dns_bruteforce", "subdomain_discovery"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "dnscan",
+            "available": self.is_available(),
+            "features": ["dns_bruteforce", "subdomain_discovery"],
+        }
 
-_dnscan_tool: Optional[DnscanTool] = None
+
+_dnscan_tool: DnscanTool | None = None
+
+
 def get_dnscan_tool() -> DnscanTool:
     global _dnscan_tool
-    if _dnscan_tool is None: _dnscan_tool = DnscanTool()
+    if _dnscan_tool is None:
+        _dnscan_tool = DnscanTool()
     return _dnscan_tool
 
 
@@ -296,17 +379,28 @@ def get_dnscan_tool() -> DnscanTool:
 
 @dataclass
 class MassdnsResult:
-    target: str; resolved: List[Dict[str, Any]]; execution_time_seconds: float; tool_version: str; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    resolved: list[dict[str, Any]]
+    execution_time_seconds: float
+    tool_version: str
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class MassdnsTool:
-    def __init__(self): self.name = "massdns"
+    def __init__(self):
+        self.name = "massdns"
+
     def is_available(self) -> bool:
         return _find_tool("massdns") is not None
-    def get_version(self) -> str: _, v = _check_tool("massdns"); return v
 
-    async def scan(self, domain: str, resolvers_file: Optional[str] = None, timeout_sec: int = 120) -> MassdnsResult:
+    def get_version(self) -> str:
+        _, v = _check_tool("massdns")
+        return v
+
+    async def scan(self, domain: str, resolvers_file: str | None = None, timeout_sec: int = 120) -> MassdnsResult:
         errors, resolved, start = [], [], datetime.now()
         path = _find_tool("massdns")
         if not path:
@@ -324,20 +418,35 @@ class MassdnsTool:
                 if line.strip():
                     try:
                         j = json.loads(line)
-                        resolved.append({"domain": j.get("name", ""), "type": j.get("type", ""), "value": j.get("data", "")})
+                        resolved.append({
+                            "domain": j.get("name", ""),
+                            "type": j.get("type", ""),
+                            "value": j.get("data", ""),
+                        })
                     except json.JSONDecodeError:
                         pass
             os.unlink(tmp.name)
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return MassdnsResult(domain, resolved, (datetime.now()-start).total_seconds(), self.get_version(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return MassdnsResult(domain, resolved, (datetime.now() - start).total_seconds(), self.get_version(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "massdns", "available": self.is_available(), "features": ["dns_resolution", "bulk_resolution"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "massdns",
+            "available": self.is_available(),
+            "features": ["dns_resolution", "bulk_resolution"],
+        }
 
-_massdns_tool: Optional[MassdnsTool] = None
+
+_massdns_tool: MassdnsTool | None = None
+
+
 def get_massdns_tool() -> MassdnsTool:
     global _massdns_tool
-    if _massdns_tool is None: _massdns_tool = MassdnsTool()
+    if _massdns_tool is None:
+        _massdns_tool = MassdnsTool()
     return _massdns_tool
 
 
@@ -347,25 +456,40 @@ def get_massdns_tool() -> MassdnsTool:
 
 @dataclass
 class DirsearchResult:
-    target: str; found: List[Dict[str, Any]]; status_codes: Dict[int, int]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    found: list[dict[str, Any]]
+    status_codes: dict[int, int]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class DirsearchTool:
-    def __init__(self): self.name = "dirsearch"
+    def __init__(self):
+        self.name = "dirsearch"
+
     def is_available(self) -> bool:
         return _find_tool("dirsearch") is not None or os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "dirsearch", "dirsearch.py"))
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, target: str, wordlist: Optional[str] = None, extensions: str = "php,asp,html,js", threads: int = 20, timeout_sec: int = 300) -> DirsearchResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, target: str, wordlist: str | None = None, extensions: str = "php,asp,html,js", threads: int = 20, timeout_sec: int = 300) -> DirsearchResult:
         errors, found, status_codes, start = [], [], {}, datetime.now()
         path = _find_tool("dirsearch") or os.path.join(SENTINELX_TOOLS_DIR, "dirsearch", "dirsearch.py")
         if not path:
             return DirsearchResult(target, [], {}, 0, ["dirsearch not found"])
         try:
-            cmd = ["python3", path, "-u", target, "--format=json", "-o", "-"] if path.endswith(".py") else [path, "-u", target, "--format=json", "-o", "-"]
-            if wordlist: cmd.extend(["-w", wordlist])
-            if extensions: cmd.extend(["-e", extensions])
+            if path.endswith(".py"):
+                cmd = ["python3", path, "-u", target, "--format=json", "-o", "-"]
+            else:
+                cmd = [path, "-u", target, "--format=json", "-o", "-"]
+            if wordlist:
+                cmd.extend(["-w", wordlist])
+            if extensions:
+                cmd.extend(["-e", extensions])
             cmd.extend(["-t", str(threads)])
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
@@ -379,16 +503,27 @@ class DirsearchTool:
                     status_codes[sc] = status_codes.get(sc, 0) + 1
             except json.JSONDecodeError:
                 pass
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return DirsearchResult(target, found, status_codes, (datetime.now()-start).total_seconds(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return DirsearchResult(target, found, status_codes, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "dirsearch", "available": self.is_available(), "features": ["directory_enumeration", "file_discovery", "extension_filtering"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "dirsearch",
+            "available": self.is_available(),
+            "features": ["directory_enumeration", "file_discovery", "extension_filtering"],
+        }
 
-_dirsearch_tool: Optional[DirsearchTool] = None
+
+_dirsearch_tool: DirsearchTool | None = None
+
+
 def get_dirsearch_tool() -> DirsearchTool:
     global _dirsearch_tool
-    if _dirsearch_tool is None: _dirsearch_tool = DirsearchTool()
+    if _dirsearch_tool is None:
+        _dirsearch_tool = DirsearchTool()
     return _dirsearch_tool
 
 
@@ -398,17 +533,28 @@ def get_dirsearch_tool() -> DirsearchTool:
 
 @dataclass
 class WfuzzResult:
-    target: str; findings: List[Dict[str, Any]]; execution_time_seconds: float; tool_version: str; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    findings: list[dict[str, Any]]
+    execution_time_seconds: float
+    tool_version: str
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class WfuzzTool:
-    def __init__(self): self.name = "wfuzz"
+    def __init__(self):
+        self.name = "wfuzz"
+
     def is_available(self) -> bool:
         return _find_tool("wfuzz") is not None
-    def get_version(self) -> str: _, v = _check_tool("wfuzz"); return v
 
-    async def scan(self, target: str, wordlist: Optional[str] = None, filter_code: str = "200,204,301,302,307,401,403,500", timeout_sec: int = 300) -> WfuzzResult:
+    def get_version(self) -> str:
+        _, v = _check_tool("wfuzz")
+        return v
+
+    async def scan(self, target: str, wordlist: str | None = None, filter_code: str = "200,204,301,302,307,401,403,500", timeout_sec: int = 300) -> WfuzzResult:
         errors, findings, start = [], [], datetime.now()
         path = _find_tool("wfuzz")
         if not path:
@@ -422,16 +568,27 @@ class WfuzzTool:
                 m = re.search(r'(https?://[^\s]+)\s+--\s+(\d+)', line)
                 if m:
                     findings.append({"url": m.group(1), "status": int(m.group(2))})
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return WfuzzResult(target, findings, (datetime.now()-start).total_seconds(), self.get_version(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return WfuzzResult(target, findings, (datetime.now() - start).total_seconds(), self.get_version(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "wfuzz", "available": self.is_available(), "features": ["web_fuzzing", "parameter_fuzzing", "content_discovery"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "wfuzz",
+            "available": self.is_available(),
+            "features": ["web_fuzzing", "parameter_fuzzing", "content_discovery"],
+        }
 
-_wfuzz_tool: Optional[WfuzzTool] = None
+
+_wfuzz_tool: WfuzzTool | None = None
+
+
 def get_wfuzz_tool() -> WfuzzTool:
     global _wfuzz_tool
-    if _wfuzz_tool is None: _wfuzz_tool = WfuzzTool()
+    if _wfuzz_tool is None:
+        _wfuzz_tool = WfuzzTool()
     return _wfuzz_tool
 
 
@@ -441,17 +598,27 @@ def get_wfuzz_tool() -> WfuzzTool:
 
 @dataclass
 class EyewitnessResult:
-    target: str; screenshots: List[str]; report_path: str; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    screenshots: list[str]
+    report_path: str
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class EyewitnessTool:
-    def __init__(self): self.name = "eyewitness"
+    def __init__(self):
+        self.name = "eyewitness"
+
     def is_available(self) -> bool:
         return _find_tool("eyewitness") is not None or os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "EyeWitness", "EyeWitness.py"))
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, urls: List[str], output_dir: Optional[str] = None, timeout_sec: int = 600) -> EyewitnessResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, urls: list[str], output_dir: str | None = None, timeout_sec: int = 600) -> EyewitnessResult:
         errors, screenshots, start = [], [], datetime.now()
         path = _find_tool("eyewitness") or os.path.join(SENTINELX_TOOLS_DIR, "EyeWitness", "EyeWitness.py")
         if not path:
@@ -461,8 +628,10 @@ class EyewitnessTool:
             tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
             tmp.write("\n".join(urls) + "\n")
             tmp.close()
-            cmd = ["python3" if path.endswith(".py") else path, path, "--web", "-f", tmp.name, "-d", out,
-                   "--no-prompt", "--timeout", "30"] if path.endswith(".py") else [path, "--web", "-f", tmp.name, "-d", out]
+            if path.endswith(".py"):
+                cmd = ["python3", path, "--web", "-f", tmp.name, "-d", out, "--no-prompt", "--timeout", "30"]
+            else:
+                cmd = [path, "--web", "-f", tmp.name, "-d", out]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             if os.path.exists(out):
@@ -470,16 +639,27 @@ class EyewitnessTool:
                     if f.endswith(".png") or f.endswith(".jpeg") or f.endswith(".html"):
                         screenshots.append(os.path.join(out, f))
             os.unlink(tmp.name)
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return EyewitnessResult(", ".join(urls[:3]), screenshots, output_dir or "", (datetime.now()-start).total_seconds(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return EyewitnessResult(", ".join(urls[:3]), screenshots, output_dir or "", (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "eyewitness", "available": self.is_available(), "features": ["web_screenshot", "visual_recon", "report_generation"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "eyewitness",
+            "available": self.is_available(),
+            "features": ["web_screenshot", "visual_recon", "report_generation"],
+        }
 
-_eyewitness_tool: Optional[EyewitnessTool] = None
+
+_eyewitness_tool: EyewitnessTool | None = None
+
+
 def get_eyewitness_tool() -> EyewitnessTool:
     global _eyewitness_tool
-    if _eyewitness_tool is None: _eyewitness_tool = EyewitnessTool()
+    if _eyewitness_tool is None:
+        _eyewitness_tool = EyewitnessTool()
     return _eyewitness_tool
 
 
@@ -489,18 +669,28 @@ def get_eyewitness_tool() -> EyewitnessTool:
 
 @dataclass
 class GitToolsResult:
-    target: str; repo_found: bool; files_extracted: List[str]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    repo_found: bool
+    files_extracted: list[str]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class GitToolsTool:
-    def __init__(self): self.name = "gittools"
+    def __init__(self):
+        self.name = "gittools"
+
     def is_available(self) -> bool:
         return (_find_tool("gitdumper.sh") is not None or
                 os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "GitTools", "Dumper", "gitdumper.sh")))
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, target_url: str, output_dir: Optional[str] = None, timeout_sec: int = 120) -> GitToolsResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, target_url: str, output_dir: str | None = None, timeout_sec: int = 120) -> GitToolsResult:
         errors, files, start = [], [], datetime.now()
         base = os.path.join(SENTINELX_TOOLS_DIR, "GitTools")
         dumper = _find_tool("gitdumper.sh") or os.path.join(base, "Dumper", "gitdumper.sh")
@@ -512,18 +702,30 @@ class GitToolsTool:
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             if os.path.exists(out):
-                for root, dirs, fnames in os.walk(out):
-                    for f in fnames: files.append(os.path.join(root, f))
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return GitToolsResult(target_url, len(files) > 0, files, (datetime.now()-start).total_seconds(), errors)
+                for root, _, fnames in os.walk(out):
+                    for f in fnames:
+                        files.append(os.path.join(root, f))
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return GitToolsResult(target_url, len(files) > 0, files, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "gittools", "available": self.is_available(), "features": ["git_discovery", "repo_extraction", "source_code_leak"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "gittools",
+            "available": self.is_available(),
+            "features": ["git_discovery", "repo_extraction", "source_code_leak"],
+        }
 
-_gittools_tool: Optional[GitToolsTool] = None
+
+_gittools_tool: GitToolsTool | None = None
+
+
 def get_gittools_tool() -> GitToolsTool:
     global _gittools_tool
-    if _gittools_tool is None: _gittools_tool = GitToolsTool()
+    if _gittools_tool is None:
+        _gittools_tool = GitToolsTool()
     return _gittools_tool
 
 
@@ -533,15 +735,25 @@ def get_gittools_tool() -> GitToolsTool:
 
 @dataclass
 class GitSecretsResult:
-    target: str; secrets_found: List[Dict[str, Any]]; execution_time_seconds: float; tool_version: str; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    secrets_found: list[dict[str, Any]]
+    execution_time_seconds: float
+    tool_version: str
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class GitSecretsTool:
-    def __init__(self): self.name = "git-secrets"
+    def __init__(self):
+        self.name = "git-secrets"
+
     def is_available(self) -> bool:
         return _find_tool("git-secrets") is not None or _find_tool("git secrets") is not None
-    def get_version(self) -> str: return "1.0"
+
+    def get_version(self) -> str:
+        return "1.0"
 
     async def scan(self, repo_path: str, timeout_sec: int = 60) -> GitSecretsResult:
         errors, secrets, start = [], [], datetime.now()
@@ -549,23 +761,37 @@ class GitSecretsTool:
         if not path and not os.path.exists(os.path.join(repo_path, ".git")):
             return GitSecretsResult(repo_path, [], 0, "not_found", ["git-secrets not found or no .git dir"])
         try:
-            cmd = [path or "git-secrets", "--scan", "--recursive", repo_path] if not (path or "").endswith("git") else ["git", "secrets", "--scan", repo_path]
+            if (path or "").endswith("git"):
+                cmd = ["git", "secrets", "--scan", repo_path]
+            else:
+                cmd = [path or "git-secrets", "--scan", "--recursive", repo_path]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             for line in raw.split("\n"):
                 if ":" in line and len(line) > 20:
-                    secrets.append({"file": line.split(":")[0].strip(), "match": line[line.find(":")+1:].strip()[:100]})
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return GitSecretsResult(repo_path, secrets, (datetime.now()-start).total_seconds(), self.get_version(), errors)
+                    secrets.append({"file": line.split(":")[0].strip(), "match": line[line.find(":") + 1:].strip()[:100]})
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return GitSecretsResult(repo_path, secrets, (datetime.now() - start).total_seconds(), self.get_version(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "git-secrets", "available": self.is_available(), "features": ["secret_detection", "git_scanning", "credential_leak"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "git-secrets",
+            "available": self.is_available(),
+            "features": ["secret_detection", "git_scanning", "credential_leak"],
+        }
 
-_git_secrets_tool: Optional[GitSecretsTool] = None
+
+_git_secrets_tool: GitSecretsTool | None = None
+
+
 def get_git_secrets_tool() -> GitSecretsTool:
     global _git_secrets_tool
-    if _git_secrets_tool is None: _git_secrets_tool = GitSecretsTool()
+    if _git_secrets_tool is None:
+        _git_secrets_tool = GitSecretsTool()
     return _git_secrets_tool
 
 
@@ -575,15 +801,25 @@ def get_git_secrets_tool() -> GitSecretsTool:
 
 @dataclass
 class RetireJsResult:
-    target: str; vulnerabilities: List[Dict[str, Any]]; execution_time_seconds: float; tool_version: str; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    vulnerabilities: list[dict[str, Any]]
+    execution_time_seconds: float
+    tool_version: str
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class RetireJsTool:
-    def __init__(self): self.name = "retire.js"
+    def __init__(self):
+        self.name = "retire.js"
+
     def is_available(self) -> bool:
         return _find_tool("retire") is not None or _find_tool("retire.js") is not None
-    def get_version(self) -> str: return "1.0"
+
+    def get_version(self) -> str:
+        return "1.0"
 
     async def scan(self, target_path: str, timeout_sec: int = 60) -> RetireJsResult:
         errors, vulns, start = [], [], datetime.now()
@@ -597,21 +833,38 @@ class RetireJsTool:
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             try:
                 data = json.loads(raw)
-                for result in data.get("results", data if isinstance(data, list) else []):
+                results = data.get("results", data if isinstance(data, list) else [])
+                for result in results:
                     if isinstance(result, dict):
-                        vulns.append({"file": result.get("file", ""), "component": result.get("component", ""), "version": result.get("version", ""), "vulnerabilities": result.get("vulnerabilities", [])})
+                        vulns.append({
+                            "file": result.get("file", ""),
+                            "component": result.get("component", ""),
+                            "version": result.get("version", ""),
+                            "vulnerabilities": result.get("vulnerabilities", []),
+                        })
             except json.JSONDecodeError:
                 pass
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return RetireJsResult(target_path, vulns, (datetime.now()-start).total_seconds(), self.get_version(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return RetireJsResult(target_path, vulns, (datetime.now() - start).total_seconds(), self.get_version(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "retire.js", "available": self.is_available(), "features": ["js_vulnerability_scanning", "library_detection", "cve_mapping"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "retire.js",
+            "available": self.is_available(),
+            "features": ["js_vulnerability_scanning", "library_detection", "cve_mapping"],
+        }
 
-_retirejs_tool: Optional[RetireJsTool] = None
+
+_retirejs_tool: RetireJsTool | None = None
+
+
 def get_retirejs_tool() -> RetireJsTool:
     global _retirejs_tool
-    if _retirejs_tool is None: _retirejs_tool = RetireJsTool()
+    if _retirejs_tool is None:
+        _retirejs_tool = RetireJsTool()
     return _retirejs_tool
 
 
@@ -621,19 +874,29 @@ def get_retirejs_tool() -> RetireJsTool:
 
 @dataclass
 class MobsfResult:
-    target: str; analysis_type: str; findings: Dict[str, Any]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    analysis_type: str
+    findings: dict[str, Any]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class MobsfTool:
-    def __init__(self): self.name = "mobsf"
+    def __init__(self):
+        self.name = "mobsf"
+
     def is_available(self) -> bool:
         # Check if MobSF server is running by trying to reach its API
         return _find_tool("mobsf") is not None
-    def get_version(self) -> str: return "1.0"
 
-    async def scan_apk(self, apk_path: str, mobsf_url: str = "http://localhost:8000", api_key: Optional[str] = None, timeout_sec: int = 300) -> MobsfResult:
-        errors, start = [], datetime.now()
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan_apk(self, apk_path: str, mobsf_url: str = "http://localhost:8000", api_key: str | None = None, timeout_sec: int = 300) -> MobsfResult:
+        start = datetime.now()
         if not os.path.exists(apk_path):
             return MobsfResult(apk_path, "apk", {}, 0, [f"APK not found: {apk_path}"])
         try:
@@ -649,17 +912,26 @@ class MobsfTool:
                 # Scan
                 resp2 = await c.post(f"{mobsf_url}/api/v1/scan", data={"hash": hash_val, "scan_type": "apk"}, headers=headers)
                 if resp2.status_code == 200:
-                    return MobsfResult(apk_path, "apk", resp2.json(), (datetime.now()-start).total_seconds(), [])
+                    return MobsfResult(apk_path, "apk", resp2.json(), (datetime.now() - start).total_seconds(), [])
                 return MobsfResult(apk_path, "apk", {}, 0, [f"Scan failed: {resp2.status_code}"])
         except Exception as e:
             return MobsfResult(apk_path, "apk", {}, 0, [str(e)[:200]])
 
-    def get_capabilities(self) -> Dict: return {"name": "mobsf", "available": self.is_available(), "features": ["mobile_analysis", "apk_scanning", "static_analysis", "dynamic_analysis"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "mobsf",
+            "available": self.is_available(),
+            "features": ["mobile_analysis", "apk_scanning", "static_analysis", "dynamic_analysis"],
+        }
 
-_mobsf_tool: Optional[MobsfTool] = None
+
+_mobsf_tool: MobsfTool | None = None
+
+
 def get_mobsf_tool() -> MobsfTool:
     global _mobsf_tool
-    if _mobsf_tool is None: _mobsf_tool = MobsfTool()
+    if _mobsf_tool is None:
+        _mobsf_tool = MobsfTool()
     return _mobsf_tool
 
 
@@ -669,24 +941,38 @@ def get_mobsf_tool() -> MobsfTool:
 
 @dataclass
 class ApktoolResult:
-    target: str; decompiled_path: str; files_extracted: int; manifest: Optional[Dict[str, Any]]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    decompiled_path: str
+    files_extracted: int
+    manifest: dict[str, Any] | None
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class ApktoolTool:
-    def __init__(self): self.name = "apktool"
+    def __init__(self):
+        self.name = "apktool"
+
     def is_available(self) -> bool:
         return _find_tool("apktool") is not None or _find_tool("apktool.jar") is not None
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, apk_path: str, output_dir: Optional[str] = None, timeout_sec: int = 120) -> ApktoolResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, apk_path: str, output_dir: str | None = None, timeout_sec: int = 120) -> ApktoolResult:
         errors, start = [], datetime.now()
         path = _find_tool("apktool") or _find_tool("apktool.jar")
         if not path or not os.path.exists(apk_path):
             return ApktoolResult(apk_path, "", 0, None, 0, ["apktool not found or APK missing"])
         try:
             out = output_dir or tempfile.mkdtemp(prefix="apktool_")
-            cmd = ["java", "-jar", path, "d", "-f", "-o", out, apk_path] if path.endswith(".jar") else [path, "d", "-f", "-o", out, apk_path]
+            if path.endswith(".jar"):
+                cmd = ["java", "-jar", path, "d", "-f", "-o", out, apk_path]
+            else:
+                cmd = [path, "d", "-f", "-o", out, apk_path]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             files = sum(len(fs) for _, _, fs in os.walk(out)) if os.path.exists(out) else 0
@@ -694,21 +980,32 @@ class ApktoolTool:
             manifest_path = os.path.join(out, "AndroidManifest.xml")
             if os.path.exists(manifest_path):
                 try:
-                    with open(manifest_path) as f:
+                    with open(manifest_path) as _:
                         manifest = {"path": manifest_path, "size": os.path.getsize(manifest_path)}
                 except Exception:
                     pass
-            return ApktoolResult(apk_path, out, files, manifest, (datetime.now()-start).total_seconds(), errors)
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return ApktoolResult(apk_path, output_dir or "", 0, None, (datetime.now()-start).total_seconds(), errors)
+            return ApktoolResult(apk_path, out, files, manifest, (datetime.now() - start).total_seconds(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return ApktoolResult(apk_path, output_dir or "", 0, None, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "apktool", "available": self.is_available(), "features": ["apk_decompilation", "android_analysis", "manifest_extraction"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "apktool",
+            "available": self.is_available(),
+            "features": ["apk_decompilation", "android_analysis", "manifest_extraction"],
+        }
 
-_apktool_tool: Optional[ApktoolTool] = None
+
+_apktool_tool: ApktoolTool | None = None
+
+
 def get_apktool_tool() -> ApktoolTool:
     global _apktool_tool
-    if _apktool_tool is None: _apktool_tool = ApktoolTool()
+    if _apktool_tool is None:
+        _apktool_tool = ApktoolTool()
     return _apktool_tool
 
 
@@ -718,25 +1015,41 @@ def get_apktool_tool() -> ApktoolTool:
 
 @dataclass
 class WpscanResult:
-    target: str; wordpress_version: Optional[str]; themes: List[str]; plugins: List[str]; vulnerabilities: List[Dict[str, Any]]; users: List[str]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    wordpress_version: str | None
+    themes: list[str]
+    plugins: list[str]
+    vulnerabilities: list[dict[str, Any]]
+    users: list[str]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class WpscanTool:
-    def __init__(self): self.name = "wpscan"
+    def __init__(self):
+        self.name = "wpscan"
+
     def is_available(self) -> bool:
         return _find_tool("wpscan") is not None
-    def get_version(self) -> str: _, v = _check_tool("wpscan"); return v
 
-    async def scan(self, target: str, api_token: Optional[str] = None, enumerate_all: bool = True, timeout_sec: int = 600) -> WpscanResult:
+    def get_version(self) -> str:
+        _, v = _check_tool("wpscan")
+        return v
+
+    async def scan(self, target: str, api_token: str | None = None, enumerate_all: bool = True, timeout_sec: int = 600) -> WpscanResult:
         errors, vulns, users, start = [], [], [], datetime.now()
         path = _find_tool("wpscan")
         if not path:
             return WpscanResult(target, None, [], [], [], [], 0, ["wpscan not found"])
         try:
             cmd = [path, "--url", target, "--format", "json", "--no-banner", "--random-user-agent"]
-            if api_token: cmd.extend(["--api-token", api_token])
-            if enumerate_all: cmd.append("--enumerate")
+            if api_token:
+                cmd.extend(["--api-token", api_token])
+            if enumerate_all:
+                cmd.append("--enumerate")
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -749,19 +1062,30 @@ class WpscanTool:
                     vulns.append({"title": v.get("title", ""), "type": v.get("type", ""), "fixed_in": v.get("fixed_in", "")})
                 for u in data.get("users", []):
                     users.append(u.get("username", ""))
-                return WpscanResult(target, wp_ver, themes, plugins, vulns, users, (datetime.now()-start).total_seconds(), errors)
+                return WpscanResult(target, wp_ver, themes, plugins, vulns, users, (datetime.now() - start).total_seconds(), errors)
             except json.JSONDecodeError:
                 pass
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return WpscanResult(target, None, [], [], vulns, users, (datetime.now()-start).total_seconds(), errors)
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return WpscanResult(target, None, [], [], vulns, users, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "wpscan", "available": self.is_available(), "features": ["wordpress_scanning", "plugin_detection", "theme_detection", "user_enumeration", "vulnerability_detection"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "wpscan",
+            "available": self.is_available(),
+            "features": ["wordpress_scanning", "plugin_detection", "theme_detection", "user_enumeration", "vulnerability_detection"],
+        }
 
-_wpscan_tool: Optional[WpscanTool] = None
+
+_wpscan_tool: WpscanTool | None = None
+
+
 def get_wpscan_tool() -> WpscanTool:
     global _wpscan_tool
-    if _wpscan_tool is None: _wpscan_tool = WpscanTool()
+    if _wpscan_tool is None:
+        _wpscan_tool = WpscanTool()
     return _wpscan_tool
 
 
@@ -771,15 +1095,26 @@ def get_wpscan_tool() -> WpscanTool:
 
 @dataclass
 class CmsmapResult:
-    target: str; cms: Optional[str]; version: Optional[str]; findings: List[Dict[str, Any]]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    cms: str | None
+    version: str | None
+    findings: list[dict[str, Any]]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class CmsmapTool:
-    def __init__(self): self.name = "cmsmap"
+    def __init__(self):
+        self.name = "cmsmap"
+
     def is_available(self) -> bool:
         return _find_tool("cmsmap") is not None or os.path.exists(os.path.join(SENTINELX_TOOLS_DIR, "CMSmap", "cmsmap.py"))
-    def get_version(self) -> str: return "1.0"
+
+    def get_version(self) -> str:
+        return "1.0"
 
     async def scan(self, target: str, timeout_sec: int = 300) -> CmsmapResult:
         errors, findings, start = [], [], datetime.now()
@@ -787,23 +1122,39 @@ class CmsmapTool:
         if not path:
             return CmsmapResult(target, None, None, [], 0, ["cmsmap not found"])
         try:
-            cmd = ["python3" if path.endswith(".py") else path, path, "-t", target, "-f", "json"] if path.endswith(".py") else [path, "-t", target, "-f", "json"]
+            if path.endswith(".py"):
+                cmd = ["python3", path, "-t", target, "-f", "json"]
+            else:
+                cmd = [path, "-t", target, "-f", "json"]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             for line in raw.split("\n"):
-                if "[+]" in line: findings.append({"type": "info", "message": line.strip()})
-                if "[!]" in line: findings.append({"type": "vulnerability", "message": line.strip()})
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return CmsmapResult(target, None, None, findings, (datetime.now()-start).total_seconds(), errors)
+                if "[+]" in line:
+                    findings.append({"type": "info", "message": line.strip()})
+                if "[!]" in line:
+                    findings.append({"type": "vulnerability", "message": line.strip()})
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return CmsmapResult(target, None, None, findings, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "cmsmap", "available": self.is_available(), "features": ["cms_detection", "wordpress_scan", "drupal_scan", "joomla_scan"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "cmsmap",
+            "available": self.is_available(),
+            "features": ["cms_detection", "wordpress_scan", "drupal_scan", "joomla_scan"],
+        }
 
-_cmsmap_tool: Optional[CmsmapTool] = None
+
+_cmsmap_tool: CmsmapTool | None = None
+
+
 def get_cmsmap_tool() -> CmsmapTool:
     global _cmsmap_tool
-    if _cmsmap_tool is None: _cmsmap_tool = CmsmapTool()
+    if _cmsmap_tool is None:
+        _cmsmap_tool = CmsmapTool()
     return _cmsmap_tool
 
 
@@ -813,17 +1164,27 @@ def get_cmsmap_tool() -> CmsmapTool:
 
 @dataclass
 class CorsTestResult:
-    target: str; vulnerable: bool; findings: List[Dict[str, Any]]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    vulnerable: bool
+    findings: list[dict[str, Any]]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class CorsTestTool:
-    def __init__(self): self.name = "corstest"
+    def __init__(self):
+        self.name = "corstest"
+
     def is_available(self) -> bool:
         return _find_tool("corstest") is not None
-    def get_version(self) -> str: return "1.0"
 
-    async def scan(self, target: str, origins: Optional[List[str]] = None, timeout_sec: int = 60) -> CorsTestResult:
+    def get_version(self) -> str:
+        return "1.0"
+
+    async def scan(self, target: str, origins: list[str] | None = None, timeout_sec: int = 60) -> CorsTestResult:
         errors, findings, start = [], [], datetime.now()
         test_origins = origins or ["https://evil.com", "https://null", "https://attacker.io", "null", "file://"]
         try:
@@ -831,7 +1192,10 @@ class CorsTestTool:
             async with httpx.AsyncClient(timeout=15, verify=False) as c:
                 for origin in test_origins:
                     try:
-                        resp = await c.options(target) if target.startswith("http") else await c.get(f"https://{target}", headers={"Origin": origin})
+                        if target.startswith("http"):
+                            resp = await c.options(target)
+                        else:
+                            resp = await c.get(f"https://{target}", headers={"Origin": origin})
                         acao = resp.headers.get("access-control-allow-origin", "")
                         acac = resp.headers.get("access-control-allow-credentials", "")
                         if acao == "*" or origin in acao or (acao and acac.lower() == "true"):
@@ -840,14 +1204,23 @@ class CorsTestTool:
                         pass
         except Exception as e:
             errors.append(str(e)[:200])
-        return CorsTestResult(target, len(findings) > 0, findings, (datetime.now()-start).total_seconds(), errors)
+        return CorsTestResult(target, len(findings) > 0, findings, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "corstest", "available": self.is_available(), "features": ["cors_testing", "origin_mirroring", "aca_misconfiguration"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "corstest",
+            "available": self.is_available(),
+            "features": ["cors_testing", "origin_mirroring", "aca_misconfiguration"],
+        }
 
-_corstest_tool: Optional[CorsTestTool] = None
+
+_corstest_tool: CorsTestTool | None = None
+
+
 def get_corstest_tool() -> CorsTestTool:
     global _corstest_tool
-    if _corstest_tool is None: _corstest_tool = CorsTestTool()
+    if _corstest_tool is None:
+        _corstest_tool = CorsTestTool()
     return _corstest_tool
 
 
@@ -857,17 +1230,30 @@ def get_corstest_tool() -> CorsTestTool:
 
 @dataclass
 class JwtResult:
-    token_analyzed: str; header: Dict[str, Any]; payload: Dict[str, Any]; is_valid: bool; algorithm: str; issues: List[str]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    token_analyzed: str
+    header: dict[str, Any]
+    payload: dict[str, Any]
+    is_valid: bool
+    algorithm: str
+    issues: list[str]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class JwtToolkitTool:
-    def __init__(self): self.name = "jwt_toolkit"
+    def __init__(self):
+        self.name = "jwt_toolkit"
+
     def is_available(self) -> bool:
         return True  # Built-in Python implementation, no external binary needed
-    def get_version(self) -> str: return "1.0"
 
-    def decode_token(self, token: str) -> Dict[str, Any]:
+    def get_version(self) -> str:
+        return "1.0"
+
+    def decode_token(self, token: str) -> dict[str, Any]:
         """Decode JWT without verification — static analysis"""
         import base64
         try:
@@ -888,18 +1274,31 @@ class JwtToolkitTool:
         alg = decoded.get("algorithm", "unknown")
         header = decoded.get("header", {})
         payload = decoded.get("payload", {})
-        if alg == "none": issues.append("Algorithm is 'none' — insecure! Token can be trivially forged")
-        if alg == "HS256": issues.append("Symmetric algorithm — verify with known secret if possible")
-        if "exp" not in payload: issues.append("No expiration claim — token may never expire")
-        if "aud" not in payload: issues.append("No audience claim — token may be reusable across services")
-        return JwtResult(token, header, payload, True, alg, issues, (datetime.now()-start).total_seconds(), errors)
+        if alg == "none":
+            issues.append("Algorithm is 'none' — insecure! Token can be trivially forged")
+        if alg == "HS256":
+            issues.append("Symmetric algorithm — verify with known secret if possible")
+        if "exp" not in payload:
+            issues.append("No expiration claim — token may never expire")
+        if "aud" not in payload:
+            issues.append("No audience claim — token may be reusable across services")
+        return JwtResult(token, header, payload, True, alg, issues, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "jwt_toolkit", "available": True, "features": ["jwt_decoding", "algorithm_detection", "security_analysis", "none_algorithm_check"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "jwt_toolkit",
+            "available": True,
+            "features": ["jwt_decoding", "algorithm_detection", "security_analysis", "none_algorithm_check"],
+        }
 
-_jwt_toolkit_tool: Optional[JwtToolkitTool] = None
+
+_jwt_toolkit_tool: JwtToolkitTool | None = None
+
+
 def get_jwt_toolkit_tool() -> JwtToolkitTool:
     global _jwt_toolkit_tool
-    if _jwt_toolkit_tool is None: _jwt_toolkit_tool = JwtToolkitTool()
+    if _jwt_toolkit_tool is None:
+        _jwt_toolkit_tool = JwtToolkitTool()
     return _jwt_toolkit_tool
 
 
@@ -909,15 +1308,26 @@ def get_jwt_toolkit_tool() -> JwtToolkitTool:
 
 @dataclass
 class TkoSubsResult:
-    target: str; vulnerable: List[Dict[str, Any]]; not_vulnerable: List[str]; execution_time_seconds: float; errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    target: str
+    vulnerable: list[dict[str, Any]]
+    not_vulnerable: list[str]
+    execution_time_seconds: float
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class TkoSubsTool:
-    def __init__(self): self.name = "tko-subs"
+    def __init__(self):
+        self.name = "tko-subs"
+
     def is_available(self) -> bool:
         return _find_tool("tko-subs") is not None
-    def get_version(self) -> str: _, v = _check_tool("tko-subs"); return v
+
+    def get_version(self) -> str:
+        _, v = _check_tool("tko-subs")
+        return v
 
     async def scan(self, domains_file: str, timeout_sec: int = 300) -> TkoSubsResult:
         errors, vulnerable, not_vulnerable, start = [], [], [], datetime.now()
@@ -935,17 +1345,29 @@ class TkoSubsTool:
                     vulnerable.append({"domain": parts[0] if parts else "", "service": parts[-1] if len(parts) > 1 else ""})
                 elif "SAFE" in line.upper() or "NOT" in line.upper():
                     parts = line.split()
-                    if parts: not_vulnerable.append(parts[0])
-        except asyncio.TimeoutError: errors.append("Timed out")
-        except Exception as e: errors.append(str(e)[:200])
-        return TkoSubsResult(domains_file, vulnerable, not_vulnerable, (datetime.now()-start).total_seconds(), errors)
+                    if parts:
+                        not_vulnerable.append(parts[0])
+        except asyncio.TimeoutError:
+            errors.append("Timed out")
+        except Exception as e:
+            errors.append(str(e)[:200])
+        return TkoSubsResult(domains_file, vulnerable, not_vulnerable, (datetime.now() - start).total_seconds(), errors)
 
-    def get_capabilities(self) -> Dict: return {"name": "tko-subs", "available": self.is_available(), "features": ["subdomain_takeover", "dangling_dns", "cloud_service_verification"]}
+    def get_capabilities(self) -> dict:
+        return {
+            "name": "tko-subs",
+            "available": self.is_available(),
+            "features": ["subdomain_takeover", "dangling_dns", "cloud_service_verification"],
+        }
 
-_tko_subs_tool: Optional[TkoSubsTool] = None
+
+_tko_subs_tool: TkoSubsTool | None = None
+
+
 def get_tko_subs_tool() -> TkoSubsTool:
     global _tko_subs_tool
-    if _tko_subs_tool is None: _tko_subs_tool = TkoSubsTool()
+    if _tko_subs_tool is None:
+        _tko_subs_tool = TkoSubsTool()
     return _tko_subs_tool
 
 
@@ -956,13 +1378,11 @@ def get_tko_subs_tool() -> TkoSubsTool:
 
 # Note: waybackurls is already in recon_tools.py as WaybackUrlsTool
 # We re-export it here for convenience
-from .recon_tools import WaybackUrlsTool, get_recon_workflow as _get_workflow
 
 
 # ============================================================================
 # 20. GAU (GetAllUrls) — Already exists in recon_tools.py
 # ============================================================================
-from .recon_tools import GauTool, WaybackUrlsTool as _WaybackUrlsTool
 
 
 # ============================================================================
@@ -972,11 +1392,13 @@ from .recon_tools import GauTool, WaybackUrlsTool as _WaybackUrlsTool
 @dataclass
 class DnsxResult:
     target: str
-    resolved: List[Dict[str, Any]]
+    resolved: list[dict[str, Any]]
     execution_time_seconds: float
     tool_version: str
-    errors: List[str]
-    def to_dict(self) -> Dict: return asdict(self)
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class DnsxTool:
@@ -997,10 +1419,10 @@ class DnsxTool:
     async def scan(self, domain: str, resp: bool = True, timeout_sec: int = 60) -> DnsxResult:
         """
         Scan a domain with dnsx.
-        
+
         dnsx usage:
           dnsx -d example.com -a -resp -json
-        
+
         Returns resolved records.
         """
         errors, resolved, start = [], [], datetime.now()
@@ -1016,7 +1438,7 @@ class DnsxTool:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
             raw = stdout.decode("utf-8", errors="replace") if stdout else ""
             for line in raw.split("\n"):
                 if line.strip():
@@ -1041,7 +1463,7 @@ class DnsxTool:
             self.get_version(), errors
         )
 
-    def get_capabilities(self) -> Dict:
+    def get_capabilities(self) -> dict:
         return {
             "name": "dnsx",
             "available": self.is_available(),
@@ -1049,7 +1471,9 @@ class DnsxTool:
         }
 
 
-_dnsx_tool: Optional[DnsxTool] = None
+_dnsx_tool: DnsxTool | None = None
+
+
 def get_dnsx_tool() -> DnsxTool:
     global _dnsx_tool
     if _dnsx_tool is None:
@@ -1084,7 +1508,7 @@ ALL_EXTENDED_TOOLS = {
 }
 
 
-def get_all_extended_tools_status() -> Dict[str, Dict[str, Any]]:
+def get_all_extended_tools_status() -> dict[str, dict[str, Any]]:
     """Get availability status for all extended tools."""
     status = {}
     for name, getter in ALL_EXTENDED_TOOLS.items():

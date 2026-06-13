@@ -1,0 +1,55 @@
+# =============================================================================
+# SENTINEL-X ULTRA — Local Development Override
+# =============================================================================
+# Automatically merged with docker-compose.yml when you run:
+#   docker compose up -d
+#
+# Provides:
+#   - Hot-reload (source code changes take effect immediately)
+#   - Debug logging
+#   - Source code mounts so edits reflect live
+#   - Frontend dev server for instant UI changes
+# =============================================================================
+
+version: "3.8"
+
+services:
+  app:
+    # ─── Hot-Reload ──────────────────────────────────────────────────────────
+    # Reloads the server when Python source files change
+    command: uvicorn sentinel_x_ultra.server:app --host 0.0.0.0 --port 7860 --reload --log-level debug
+
+    # ─── Source Code Mounts ──────────────────────────────────────────────────
+    # Mount the live source code so reload picks up changes
+    volumes:
+      - ./sentinel_x_ultra/sentinel_x_ultra:/app/sentinel_x_ultra:ro
+
+    # ─── Environment ─────────────────────────────────────────────────────────
+    environment:
+      - SENTINELX_SERVER__HOST=0.0.0.0
+      - SENTINELX_SERVER__PORT=7860
+      - SENTINELX_SERVER__LOG_LEVEL=DEBUG
+      - SENTINELX_SERVER__RELOAD=true
+
+    # ─── Ports ───────────────────────────────────────────────────────────────
+    # Expose on all interfaces for local dev access
+    ports:
+      - "7860:7860"
+
+  # ─── Frontend Dev Server ───────────────────────────────────────────────────
+  # Optional: serves the React UI with Vite's HMR for instant frontend changes
+  frontend:
+    profiles:
+      - dev       # Only starts with: docker compose --profile dev up
+    image: node:20-alpine
+    container_name: sentinel-x-frontend-dev
+    working_dir: /app/frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./sentinel_x_ultra/frontend:/app/frontend
+    environment:
+      - VITE_API_URL=http://localhost:7860
+    depends_on:
+      - app

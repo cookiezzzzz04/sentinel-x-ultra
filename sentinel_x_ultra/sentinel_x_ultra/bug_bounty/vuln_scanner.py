@@ -20,11 +20,9 @@ Phases:
 11. Finding Decision
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
-from enum import Enum
 import uuid
-
+from dataclasses import dataclass, field
+from typing import Any
 
 # ── Status / Tier constants ─────────────────────────────────────────────────
 
@@ -51,22 +49,22 @@ class AttackSurfaceEntry:
     """Phase 1 output — an identified attack surface element."""
     endpoint: str = ""
     method: str = "GET"
-    parameters: List[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
     content_type: str = "application/x-www-form-urlencoded"
     authentication_required: bool = False
-    role_requirements: List[str] = field(default_factory=list)
+    role_requirements: list[str] = field(default_factory=list)
     category: str = ""  # api, auth, upload, search, admin, etc.
 
 
 @dataclass
 class AttackSurfaceMap:
     """Phase 1 output — complete attack surface."""
-    endpoints: List[AttackSurfaceEntry] = field(default_factory=list)
-    applications: List[str] = field(default_factory=list)
-    authentication_flows: List[str] = field(default_factory=list)
-    authorization_boundaries: List[str] = field(default_factory=list)
-    user_roles: List[str] = field(default_factory=list)
-    third_party_integrations: List[str] = field(default_factory=list)
+    endpoints: list[AttackSurfaceEntry] = field(default_factory=list)
+    applications: list[str] = field(default_factory=list)
+    authentication_flows: list[str] = field(default_factory=list)
+    authorization_boundaries: list[str] = field(default_factory=list)
+    user_roles: list[str] = field(default_factory=list)
+    third_party_integrations: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -85,9 +83,9 @@ class BaselineRecord:
     status_code: int = 200
     response_length: int = 0
     response_structure: str = ""
-    headers: Dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
     timing_ms: float = 0.0
-    redirects: List[str] = field(default_factory=list)
+    redirects: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -100,7 +98,7 @@ class DifferentialResult:
     structure_change: bool = False
     timing_change: bool = False
     header_change: bool = False
-    observed_behavior: List[str] = field(default_factory=list)
+    observed_behavior: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -118,8 +116,8 @@ class TestResult:
     severity: str = "info"
     confidence: int = 0
     description: str = ""
-    evidence: Dict[str, Any] = field(default_factory=dict)
-    cwe_ids: List[str] = field(default_factory=list)
+    evidence: dict[str, Any] = field(default_factory=dict)
+    cwe_ids: list[str] = field(default_factory=list)
     owasp_category: str = ""
 
     # ── New fields from the required output schema ──
@@ -130,25 +128,25 @@ class TestResult:
     skeptic_score: int = 0
     evidence_tier: str = "TIER_0"
     reproducibility: str = "NOT_REPRODUCIBLE"
-    observations: List[str] = field(default_factory=list)
-    alternative_explanations: List[str] = field(default_factory=list)
-    rejected_alternatives: List[str] = field(default_factory=list)
-    raw_artifacts: List[str] = field(default_factory=list)
-    requests: List[str] = field(default_factory=list)
-    responses: List[str] = field(default_factory=list)
-    payloads: List[str] = field(default_factory=list)
-    affected_assets: List[str] = field(default_factory=list)
-    demonstrated_impact: List[str] = field(default_factory=list)
-    assumptions: List[str] = field(default_factory=list)
-    missing_evidence: List[str] = field(default_factory=list)
-    recommended_validation_checks: List[str] = field(default_factory=list)
+    observations: list[str] = field(default_factory=list)
+    alternative_explanations: list[str] = field(default_factory=list)
+    rejected_alternatives: list[str] = field(default_factory=list)
+    raw_artifacts: list[str] = field(default_factory=list)
+    requests: list[str] = field(default_factory=list)
+    responses: list[str] = field(default_factory=list)
+    payloads: list[str] = field(default_factory=list)
+    affected_assets: list[str] = field(default_factory=list)
+    demonstrated_impact: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    missing_evidence: list[str] = field(default_factory=list)
+    recommended_validation_checks: list[str] = field(default_factory=list)
 
     # ── Internal phase outputs ──
-    attack_surface: Optional[AttackSurfaceMap] = None
-    hypotheses: List[Hypothesis] = field(default_factory=list)
-    baseline: Optional[BaselineRecord] = None
-    differentials: List[DifferentialResult] = field(default_factory=list)
-    phases_run: List[str] = field(default_factory=list)
+    attack_surface: AttackSurfaceMap | None = None
+    hypotheses: list[Hypothesis] = field(default_factory=list)
+    baseline: BaselineRecord | None = None
+    differentials: list[DifferentialResult] = field(default_factory=list)
+    phases_run: list[str] = field(default_factory=list)
 
 
 # ── OWASP test payloads ─────────────────────────────────────────────────────
@@ -220,13 +218,13 @@ class VulnerabilityScannerAgent:
     def __init__(self, llm_provider=None, memory=None):
         self.llm_provider = llm_provider
         self.memory = memory
-        self.test_results: List[TestResult] = []
+        self.test_results: list[TestResult] = []
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def scan(self, target: str, test_types: Optional[List[str]] = None) -> List[TestResult]:
+    async def scan(self, target: str, test_types: list[str] | None = None) -> list[TestResult]:
         """
         Run 11-phase adversarial scan against target endpoint.
 
@@ -407,7 +405,7 @@ class VulnerabilityScannerAgent:
     # PHASE 2 — HYPOTHESIS GENERATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase2_hypotheses(self, target: str, ttype: str, surface: AttackSurfaceMap) -> List[Hypothesis]:
+    async def _phase2_hypotheses(self, target: str, ttype: str, surface: AttackSurfaceMap) -> list[Hypothesis]:
         """Generate potential weakness hypotheses with likelihood estimates.
 
         AI-Powered: Uses LLM for intelligent hypothesis generation when available.
@@ -530,8 +528,8 @@ class VulnerabilityScannerAgent:
 
     def _phase4_differential(
         self, target: str, ttype: str,
-        payloads: List[str], baseline: BaselineRecord
-    ) -> List[DifferentialResult]:
+        payloads: list[str], baseline: BaselineRecord
+    ) -> list[DifferentialResult]:
         """
         Compare baseline vs test input. Record only observed behavior.
         Do not interpret yet.
@@ -616,12 +614,7 @@ class VulnerabilityScannerAgent:
             diff.length_change = True
 
         # Command injection — may show different output
-        elif ttype == "command_injection":
-            diff.length_change = True
-            diff.structure_change = True
-
-        # Path traversal — may show file contents
-        elif ttype == "path_traversal":
+        elif ttype == "command_injection" or ttype == "path_traversal":
             diff.length_change = True
             diff.structure_change = True
 
@@ -630,9 +623,9 @@ class VulnerabilityScannerAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _phase5_vuln_specific(
-        self, ttype: str, differentials: List[DifferentialResult],
-        payloads: List[str]
-    ) -> Dict[str, Any]:
+        self, ttype: str, differentials: list[DifferentialResult],
+        payloads: list[str]
+    ) -> dict[str, Any]:
         """
         Test with type-specific required evidence.
         Map to the corresponding validation rules from Agent 7.
@@ -688,7 +681,7 @@ class VulnerabilityScannerAgent:
 
         return result
 
-    def _check_sqli(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_sqli(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """SQLi requires: baseline + true condition + false condition + measurable differential."""
         verified, missing = [], []
         if has_diff:
@@ -701,7 +694,7 @@ class VulnerabilityScannerAgent:
             missing.append("Required: true condition and false condition responses")
         return verified, missing
 
-    def _check_xss(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_xss(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """XSS requires: payload accepted + reflected/stored + rendered + JS executed."""
         verified, missing = [], []
         if has_diff:
@@ -715,7 +708,7 @@ class VulnerabilityScannerAgent:
         missing.append("Required: JavaScript execution observation (requires browser)")
         return verified, missing
 
-    def _check_idor(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_idor(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """IDOR requires: actor A/B, ownership difference, unauthorized access observed."""
         verified, missing = [], []
         if has_diff:
@@ -725,7 +718,7 @@ class VulnerabilityScannerAgent:
         missing.append("Required: ownership boundary identification (actor A vs actor B)")
         return verified, missing
 
-    def _check_ssrf(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_ssrf(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """SSRF requires: outbound request + attacker-controlled destination + callback."""
         verified, missing = [], []
         if has_diff:
@@ -735,7 +728,7 @@ class VulnerabilityScannerAgent:
         missing.append("Required: OAST/DNS callback observation")
         return verified, missing
 
-    def _check_auth_bypass(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_auth_bypass(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Auth bypass requires: protected resource + access without auth + reproducible."""
         verified, missing = [], []
         if has_diff:
@@ -745,14 +738,14 @@ class VulnerabilityScannerAgent:
         missing.append("Required: identification of protected resource being bypassed")
         return verified, missing
 
-    def _check_priv_esc(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_priv_esc(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Privilege escalation requires: boundary identified + elevation demonstrated + verified."""
         verified, missing = [], []
         missing.append("Required: privilege boundary identification")
         missing.append("Required: demonstrated privilege elevation")
         return verified, missing
 
-    def _check_cmd_injection(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_cmd_injection(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Command injection requires: execution context + command execution + output."""
         verified, missing = [], []
         if has_diff:
@@ -762,7 +755,7 @@ class VulnerabilityScannerAgent:
         missing.append("Required: evidence that input reaches execution context")
         return verified, missing
 
-    def _check_path_traversal(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_path_traversal(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Path traversal requires: file access outside web root."""
         verified, missing = [], []
         if has_diff:
@@ -771,7 +764,7 @@ class VulnerabilityScannerAgent:
             missing.append("Required: file access outside web root demonstrated")
         return verified, missing
 
-    def _check_ssti(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_ssti(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """SSTI requires: template injection demonstrated."""
         verified, missing = [], []
         if has_diff:
@@ -780,13 +773,13 @@ class VulnerabilityScannerAgent:
             missing.append("Required: template injection evidence ({{7*7}} rendering)")
         return verified, missing
 
-    def _check_xxe(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_xxe(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """XXE requires: XML parsing with external entity."""
         verified, missing = [], []
         missing.append("Required: XML External Entity processing demonstrated")
         return verified, missing
 
-    def _check_open_redirect(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_open_redirect(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Open redirect requires: redirect to attacker-controlled destination."""
         verified, missing = [], []
         if has_diff:
@@ -795,13 +788,13 @@ class VulnerabilityScannerAgent:
             missing.append("Required: redirect to external domain demonstrated")
         return verified, missing
 
-    def _check_csrf(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_csrf(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """CSRF requires: state-changing request accepted without CSRF protection."""
         verified, missing = [], []
         missing.append("Required: state-changing request succeeds without CSRF token")
         return verified, missing
 
-    def _check_business_logic(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_business_logic(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Business logic requires: workflow manipulation demonstrated."""
         verified, missing = [], []
         if has_diff:
@@ -810,7 +803,7 @@ class VulnerabilityScannerAgent:
             missing.append("Required: business logic bypass demonstrated")
         return verified, missing
 
-    def _check_info_disclosure(self, diff: List[DifferentialResult], payloads: List[str], has_diff: bool) -> Tuple[List[str], List[str]]:
+    def _check_info_disclosure(self, diff: list[DifferentialResult], payloads: list[str], has_diff: bool) -> tuple[list[str], list[str]]:
         """Information disclosure requires: sensitive data exposure."""
         verified, missing = [], []
         missing.append("Required: sensitive data exposure in response")
@@ -820,7 +813,7 @@ class VulnerabilityScannerAgent:
     # PHASE 6 — FALSE POSITIVE ELIMINATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _phase6_false_positives(self, ttype: str, target: str, vuln_check: Dict, result: TestResult) -> List[str]:
+    async def _phase6_false_positives(self, ttype: str, target: str, vuln_check: dict, result: TestResult) -> list[str]:
         """
         Generate at least five alternative explanations.
         Attempt to invalidate the finding.
@@ -902,7 +895,7 @@ class VulnerabilityScannerAgent:
     # PHASE 7 — REPRODUCIBILITY VERIFICATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase7_reproducibility(self, ttype: str, differentials: List[DifferentialResult]) -> str:
+    def _phase7_reproducibility(self, ttype: str, differentials: list[DifferentialResult]) -> str:
         """
         Repeat tests. Determine consistency, reliability, required conditions.
         """
@@ -927,7 +920,7 @@ class VulnerabilityScannerAgent:
     # PHASE 8 — EVIDENCE QUALITY SCORING
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase8_evidence_tier(self, vuln_check: Dict, differentials: List[DifferentialResult]) -> str:
+    def _phase8_evidence_tier(self, vuln_check: dict, differentials: list[DifferentialResult]) -> str:
         """
         Tier 0: No evidence
         Tier 1: Single observation
@@ -955,7 +948,7 @@ class VulnerabilityScannerAgent:
     # PHASE 9 — IMPACT REALISM
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase9_impact(self, ttype: str, target: str, vuln_check: Dict, tier: str) -> Tuple[str, List[str]]:
+    def _phase9_impact(self, ttype: str, target: str, vuln_check: dict, tier: str) -> tuple[str, list[str]]:
         """
         Only report demonstrated impact.
         Never report 'could lead to' unless every step is evidenced.
@@ -985,7 +978,7 @@ class VulnerabilityScannerAgent:
     # PHASE 10 — SKEPTICISM REVIEW
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _phase10_skepticism(self, alternatives: List[str], vuln_check: Dict, tier: str, evidence: Dict = None) -> int:
+    def _phase10_skepticism(self, alternatives: list[str], vuln_check: dict, tier: str, evidence: dict = None) -> int:
         """
         skeptic_score 0-100.
 
@@ -1042,9 +1035,9 @@ class VulnerabilityScannerAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _phase11_decision(
-        self, ttype: str, tier: str, vuln_check: Dict,
+        self, ttype: str, tier: str, vuln_check: dict,
         skeptic_score: int, impact: str
-    ) -> Tuple[bool, str, int, str, str]:
+    ) -> tuple[bool, str, int, str, str]:
         """
         Only findings with Tier 3+ evidence may be escalated.
 
@@ -1087,11 +1080,11 @@ class VulnerabilityScannerAgent:
     # RECOMMENDED VALIDATION CHECKS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _get_validation_checks(self, ttype: str, vuln_check: Dict) -> List[str]:
+    def _get_validation_checks(self, ttype: str, vuln_check: dict) -> list[str]:
         """Generate recommended validation checks for Agent 7."""
         checks = [
             f"Verify {ttype}: confirm required evidence elements",
-            f"Check reproducibility across multiple attempts",
+            "Check reproducibility across multiple attempts",
         ]
 
         extra = {
@@ -1121,7 +1114,7 @@ class VulnerabilityScannerAgent:
     # SUMMARY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get summary of all scan results."""
         findings = [r for r in self.test_results if r.status == "POTENTIAL_FINDING"]
         investigations = [r for r in self.test_results if r.status == "INVESTIGATION_REQUIRED"]

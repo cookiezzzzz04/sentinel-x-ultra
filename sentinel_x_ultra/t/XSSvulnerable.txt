@@ -1,0 +1,6 @@
+# XSSvulnerable.txt - confirmed XSS findings (Dalfox output)
+# Populated by the recon agent. One confirmed URL per line.
+#
+# Example command:
+#   dalfox file xss.txt | tee XSSvulnerable.txt
+# (no findings yet - Dalfox will append here as it runs)

@@ -1,0 +1,6 @@
+# Alive Subs - live, responsive subdomains (httpx probed)
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat AllSubs.txt | httpx -o AliveSubs.txt
+https://example.com

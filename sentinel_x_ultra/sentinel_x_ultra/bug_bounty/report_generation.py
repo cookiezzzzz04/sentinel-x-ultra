@@ -18,10 +18,9 @@ and validated finding metadata.
 """
 
 import json
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-
+from typing import Any
 
 # ── Constants for strict UNKNOWN handling ───────────────────────────────────
 
@@ -49,13 +48,13 @@ class VulnerabilityReport:
     cvss: str = ""
     impact: str = ""
     attack_scenario: str = ""
-    steps_to_reproduce: List[str] = field(default_factory=list)
+    steps_to_reproduce: list[str] = field(default_factory=list)
     request: str = ""
     response: str = ""
-    screenshots: List[str] = field(default_factory=list)
+    screenshots: list[str] = field(default_factory=list)
     affected_demographic: str = ""
     recommended_fix: str = ""
-    references: List[str] = field(default_factory=list)
+    references: list[str] = field(default_factory=list)
     generated_at: str = ""
     decision: str = ""  # GENERATE | REVIEW | BLOCK
 
@@ -176,15 +175,15 @@ class ReportGenerationAgent:
     """
 
     def __init__(self, llm_provider=None, memory=None):
-        self.reports: List[VulnerabilityReport] = []
+        self.reports: list[VulnerabilityReport] = []
         self.llm_provider = llm_provider
         self.memory = memory
 
     async def generate_report(
         self,
-        finding: Dict[str, Any],
-        analysis: Dict[str, Any],
-        poc: Dict[str, Any],
+        finding: dict[str, Any],
+        analysis: dict[str, Any],
+        poc: dict[str, Any],
     ) -> VulnerabilityReport:
         """Generate a strict evidence-to-Blank.md vulnerability report.
 
@@ -239,7 +238,7 @@ class ReportGenerationAgent:
         #
         # If conflict exists → REVIEW (do not resolve)
 
-        # Detect conflicts between sources (Phase 5 Deep: AI-powered) 
+        # Detect conflicts between sources (Phase 5 Deep: AI-powered)
         conflicts = await self._detect_conflicts(finding, analysis, poc)
         if conflicts:
             report = VulnerabilityReport(
@@ -430,9 +429,9 @@ class ReportGenerationAgent:
     # CONFLICT DETECTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _detect_conflicts(self, finding: Dict[str, Any],
-                                analysis: Dict[str, Any],
-                                poc: Dict[str, Any]) -> List[str]:
+    async def _detect_conflicts(self, finding: dict[str, Any],
+                                analysis: dict[str, Any],
+                                poc: dict[str, Any]) -> list[str]:
         """Detect conflicts between sources using deterministic and AI-powered analysis.
 
         Phase 5 Deep: Uses LLM for semantic conflict detection — catching contradictions
@@ -532,7 +531,7 @@ class ReportGenerationAgent:
                 return v
         return ""
 
-    def generate_executive_summary(self, reports: List[VulnerabilityReport]) -> str:
+    def generate_executive_summary(self, reports: list[VulnerabilityReport]) -> str:
         """Generate an executive summary of all findings.
 
         Only includes reports that were GENERATED (passed the hard gate).

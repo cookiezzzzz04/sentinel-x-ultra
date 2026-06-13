@@ -36,10 +36,11 @@ projects too.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import structlog
 
@@ -147,7 +148,7 @@ class CoverageReport:
 # A baseline is a per-dimension "expected artifact count". We use it to
 # normalize raw counts to a 0–1 ratio. If no baseline is set, a default
 # of 5 artifacts per dimension is used.
-DEFAULT_BASELINE: dict[str, int] = {d: 5 for d in DIMENSIONS}
+DEFAULT_BASELINE: dict[str, int] = dict.fromkeys(DIMENSIONS, 5)
 
 
 def _ratio(count: int, expected: int) -> float:
@@ -244,7 +245,7 @@ class CoverageEngine:
             return out
 
         paths = file_paths()
-        cat_counts: dict[str, int] = {d: 0 for d in DIMENSIONS}
+        cat_counts: dict[str, int] = dict.fromkeys(DIMENSIONS, 0)
         for p in paths:
             if _match(p, _AUTH_HINTS):
                 cat_counts["authentication"] += 1

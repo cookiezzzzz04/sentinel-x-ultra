@@ -12,10 +12,9 @@ Upgraded with:
 - Downstream guidance: build instruction packets for Agents 5-10
 """
 
-import json
-from typing import Any, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 
 @dataclass
@@ -25,14 +24,14 @@ class MemoryEntry:
     key: str = ""
     value: Any = None
     timestamp: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ProvenanceChain:
     """Tracks which agents contributed to a piece of knowledge."""
     key: str = ""
-    contributors: List[str] = field(default_factory=list)
+    contributors: list[str] = field(default_factory=list)
     first_seen: str = ""
     last_updated: str = ""
     confidence: float = 0.0
@@ -48,27 +47,27 @@ class AgentMemory:
     """
 
     def __init__(self):
-        self._assets: Dict[str, Dict[str, Any]] = {}
-        self._priority_targets: List[Dict[str, Any]] = []
-        self._technologies: Dict[str, List[str]] = {}
-        self._subdomains: Dict[str, Set[str]] = {}
-        self._findings: List[Dict[str, Any]] = []
-        self._validated_findings: List[Dict[str, Any]] = []
-        self._scope_boundaries: Dict[str, str] = {}
-        self._historical_urls: List[str] = []
-        self._policy_rules: Dict[str, Any] = {}
-        self._program_intelligence: Dict[str, Any] = {}
-        self._ownership_map: Dict[str, str] = {}
-        self._reconnaissance_map: Dict[str, List[str]] = {}
-        self._provenance: Dict[str, ProvenanceChain] = {}
-        self._history: List[MemoryEntry] = []
-        self._cvss_context: Dict[str, Any] = {}
-        self._exploitability_map: Dict[str, str] = {}
+        self._assets: dict[str, dict[str, Any]] = {}
+        self._priority_targets: list[dict[str, Any]] = []
+        self._technologies: dict[str, list[str]] = {}
+        self._subdomains: dict[str, set[str]] = {}
+        self._findings: list[dict[str, Any]] = []
+        self._validated_findings: list[dict[str, Any]] = []
+        self._scope_boundaries: dict[str, str] = {}
+        self._historical_urls: list[str] = []
+        self._policy_rules: dict[str, Any] = {}
+        self._program_intelligence: dict[str, Any] = {}
+        self._ownership_map: dict[str, str] = {}
+        self._reconnaissance_map: dict[str, list[str]] = {}
+        self._provenance: dict[str, ProvenanceChain] = {}
+        self._history: list[MemoryEntry] = []
+        self._cvss_context: dict[str, Any] = {}
+        self._exploitability_map: dict[str, str] = {}
 
     # ── Write APIs ──────────────────────────────────────────────────────────
 
     def record_asset(self, source: str, asset_name: str, asset_type: str,
-                     confidence: float, metadata: Optional[Dict] = None):
+                     confidence: float, metadata: dict | None = None):
         """Record a discovered asset from any agent with provenance tracking."""
         if asset_name not in self._assets or self._assets[asset_name].get("confidence", 0) < confidence:
             self._assets[asset_name] = {
@@ -115,7 +114,7 @@ class AgentMemory:
             self._subdomains[domain] = set()
         self._subdomains[domain].add(subdomain)
 
-    def record_finding(self, source: str, finding: Dict[str, Any]):
+    def record_finding(self, source: str, finding: dict[str, Any]):
         """Record a discovered finding from a scanner."""
         self._findings.append({
             **finding,
@@ -124,7 +123,7 @@ class AgentMemory:
         })
         self._update_provenance(f"finding:{finding.get('title', 'unknown')}", source, 0.8)
 
-    def record_validated_finding(self, source: str, finding: Dict[str, Any]):
+    def record_validated_finding(self, source: str, finding: dict[str, Any]):
         """Record a validated finding (passed Agent 7)."""
         self._validated_findings.append({
             **finding,
@@ -141,7 +140,7 @@ class AgentMemory:
         self._ownership_map[asset] = status
         self._update_provenance(f"ownership:{asset}", source, 0.9 if status == "VERIFIED" else 0.5)
 
-    def record_policy_rule(self, source: str, rule: Dict[str, Any]):
+    def record_policy_rule(self, source: str, rule: dict[str, Any]):
         """Record a policy enforcement rule."""
         self._policy_rules[rule.get("vuln_type", "unknown")] = rule
 
@@ -150,11 +149,11 @@ class AgentMemory:
         if url not in self._historical_urls:
             self._historical_urls.append(url)
 
-    def record_program_intel(self, source: str, intel: Dict[str, Any]):
+    def record_program_intel(self, source: str, intel: dict[str, Any]):
         """Record program intelligence from Agent 1."""
         self._program_intelligence = {**self._program_intelligence, **intel}
 
-    def record_reconnaissance(self, source: str, targets: List[str]):
+    def record_reconnaissance(self, source: str, targets: list[str]):
         """Record which sources discovered which targets (for provenance)."""
         if source not in self._reconnaissance_map:
             self._reconnaissance_map[source] = []
@@ -162,7 +161,7 @@ class AgentMemory:
             if t not in self._reconnaissance_map[source]:
                 self._reconnaissance_map[source].append(t)
 
-    def record_cvss_context(self, source: str, context: Dict[str, Any]):
+    def record_cvss_context(self, source: str, context: dict[str, Any]):
         """Record CVSS scoring context from Agent 9."""
         self._cvss_context.update(context)
 
@@ -183,15 +182,15 @@ class AgentMemory:
         chain.last_updated = now
         chain.confidence = max(chain.confidence, confidence)
 
-    def get_provenance(self, key: str) -> Optional[ProvenanceChain]:
+    def get_provenance(self, key: str) -> ProvenanceChain | None:
         """Get the provenance chain for a knowledge item."""
         return self._provenance.get(key)
 
     # ── Cross-Reference Queries ─────────────────────────────────────────────
 
-    def query_by_agent(self, agent_name: str) -> Dict[str, Any]:
+    def query_by_agent(self, agent_name: str) -> dict[str, Any]:
         """Get ALL knowledge contributed by a specific agent.
-        
+
         Useful for cross-referencing: "what did Agent 4 discover?"
         """
         results = {
@@ -215,9 +214,9 @@ class AgentMemory:
                 results["findings"].append(finding)
         return results
 
-    def query_by_target(self, target: str) -> Dict[str, Any]:
+    def query_by_target(self, target: str) -> dict[str, Any]:
         """Get ALL knowledge related to a specific target.
-        
+
         Useful for: "what do we know about example.com?"
         """
         results = {
@@ -233,9 +232,9 @@ class AgentMemory:
                 results["findings"].append(finding)
         return results
 
-    def get_attack_surface_summary(self, domain: str) -> Dict[str, Any]:
+    def get_attack_surface_summary(self, domain: str) -> dict[str, Any]:
         """Build a complete attack surface summary for a domain.
-        
+
         Combines: subdomains, technologies, priority targets, findings,
         scope, ownership, and historical URLs into one packet.
         """
@@ -255,9 +254,9 @@ class AgentMemory:
 
     # ── Downstream Context Builders ─────────────────────────────────────────
 
-    def build_context_for_agent_5(self, domain: str) -> Dict[str, Any]:
+    def build_context_for_agent_5(self, domain: str) -> dict[str, Any]:
         """Build context packet for Agent 5 (Active Enumeration).
-        
+
         Includes: high-confidence assets, priority targets, technologies,
         subdomains already known, scope boundaries.
         """
@@ -271,9 +270,9 @@ class AgentMemory:
             "source_agents": self._provenance.get(f"asset:{domain}", ProvenanceChain()).contributors,
         }
 
-    def build_context_for_agent_6(self, domain: str) -> Dict[str, Any]:
+    def build_context_for_agent_6(self, domain: str) -> dict[str, Any]:
         """Build context packet for Agent 6 (Vulnerability Scanner).
-        
+
         Includes: priority targets, known technologies, historical vulns,
         endpoints from passive intel, attack surface classifications.
         """
@@ -289,9 +288,9 @@ class AgentMemory:
             )),
         }
 
-    def build_context_for_agent_7(self, finding_id: str) -> Dict[str, Any]:
+    def build_context_for_agent_7(self, finding_id: str) -> dict[str, Any]:
         """Build context packet for Agent 7 (Validation Engine).
-        
+
         Includes: related findings, scope context, policy rules.
         """
         finding = next((f for f in self._findings if f.get("id") == finding_id), {})
@@ -304,9 +303,9 @@ class AgentMemory:
             "policy_rules": dict(self._policy_rules),
         }
 
-    def build_context_for_agent_8(self, finding_id: str) -> Dict[str, Any]:
+    def build_context_for_agent_8(self, finding_id: str) -> dict[str, Any]:
         """Build context packet for Agent 8 (Exploitation).
-        
+
         Includes: validated finding, analysis context, CVSS context.
         """
         validated = next((f for f in self._validated_findings if f.get("id") == finding_id), {})
@@ -316,9 +315,9 @@ class AgentMemory:
             "exploitability": self._exploitability_map.get(validated.get("target", ""), "UNKNOWN"),
         }
 
-    def build_context_for_agent_9(self, finding_id: str) -> Dict[str, Any]:
+    def build_context_for_agent_9(self, finding_id: str) -> dict[str, Any]:
         """Build context packet for Agent 9 (Analysis).
-        
+
         Includes: historical CVSS scores for similar findings,
         exploitability context, technology stack.
         """
@@ -334,9 +333,9 @@ class AgentMemory:
             ][:5],
         }
 
-    def build_context_for_agent_10(self, project_id: str = "") -> Dict[str, Any]:
+    def build_context_for_agent_10(self, project_id: str = "") -> dict[str, Any]:
         """Build context packet for Agent 10 (Report Generation).
-        
+
         Includes: all validated findings, analysis results, PoC details,
         scope and policy context for the complete report.
         """
@@ -352,29 +351,29 @@ class AgentMemory:
 
     # ── Read APIs ───────────────────────────────────────────────────────────
 
-    def get_assets(self, min_confidence: float = 0.0) -> List[Dict[str, Any]]:
+    def get_assets(self, min_confidence: float = 0.0) -> list[dict[str, Any]]:
         return [a for a in self._assets.values() if a["confidence"] >= min_confidence]
 
-    def get_priority_targets(self, min_score: int = 0) -> List[Dict[str, Any]]:
+    def get_priority_targets(self, min_score: int = 0) -> list[dict[str, Any]]:
         return [t for t in self._priority_targets if t["score"] >= min_score]
 
-    def get_technologies(self, domain: str = "") -> Dict[str, List[str]]:
+    def get_technologies(self, domain: str = "") -> dict[str, list[str]]:
         if domain:
             return {domain: self._technologies.get(domain, [])}
         return dict(self._technologies)
 
-    def get_subdomains(self, domain: str) -> List[str]:
+    def get_subdomains(self, domain: str) -> list[str]:
         return list(self._subdomains.get(domain, set()))
 
-    def get_all_subdomains(self) -> Dict[str, List[str]]:
+    def get_all_subdomains(self) -> dict[str, list[str]]:
         return {d: list(s) for d, s in self._subdomains.items()}
 
-    def get_findings(self, status: str = "") -> List[Dict[str, Any]]:
+    def get_findings(self, status: str = "") -> list[dict[str, Any]]:
         if status:
             return [f for f in self._findings if f.get("status") == status]
         return list(self._findings)
 
-    def get_validated_findings(self) -> List[Dict[str, Any]]:
+    def get_validated_findings(self) -> list[dict[str, Any]]:
         return list(self._validated_findings)
 
     def get_scope_status(self, target: str) -> str:
@@ -383,13 +382,13 @@ class AgentMemory:
     def get_ownership(self, asset: str) -> str:
         return self._ownership_map.get(asset, "UNKNOWN_OWNER")
 
-    def get_historical_urls(self) -> List[str]:
+    def get_historical_urls(self) -> list[str]:
         return list(self._historical_urls)
 
-    def get_program_intel(self) -> Dict[str, Any]:
+    def get_program_intel(self) -> dict[str, Any]:
         return dict(self._program_intelligence)
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         return {
             "assets_count": len(self._assets),
             "priority_targets_count": len(self._priority_targets),

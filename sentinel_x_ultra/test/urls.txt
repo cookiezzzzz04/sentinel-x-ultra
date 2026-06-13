@@ -1,0 +1,6 @@
+# urls.txt - all archived URLs (Wayback Machine, gau, katana)
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat AliveSubs.txt | waybackurls | tee urls.txt
+https://example.com/

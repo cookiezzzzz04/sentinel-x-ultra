@@ -1,5 +1,5 @@
 """Fix variable name bugs - function bodies reference old param names."""
-with open('server.py', 'r', encoding='utf-8') as f:
+with open('server.py', encoding='utf-8') as f:
     content = f.read()
 
 changes = 0

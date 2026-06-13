@@ -1,137 +1,79 @@
-# Byte-compiled / optimized / DLL files
+# ─── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
+.eggs/
 *.egg
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Environments
-.env
-.env.*
-.venv
+.venv/
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
-*.local
 
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-desktop.ini
-$RECYCLE.BIN/
+# ─── Frontend ───────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+# ─── Root tooling ────────────────────────────────────────────────────────────
+node_modules/
+# ─── Environment & secrets ───────────────────────────────────────────────────
+.env
+.env.*
+api_keys.json
+secrets.json
+*.secret
+config.local.json
 
-# GitHub workflows
-.github/
+# ─── User-specific config & runtime data ─────────────────────────────────────
+agent_models.json
+providers.json
+findings.json
+investigation_log.json
+settings.local.yaml
+settings.local.json
 
-# Logs
-*.log
-logs/
-*.log.*
-nohup.out
-server_log.txt
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Project-specific
-projects/
-storage/
-*.bak
-temp/
-tmp/
-*.tmp
-
-# User tool installations (security tools go here)
+# ─── Security tool installations (stays on your machine) ─────────────────────
 .sentinel/
 .sentinelx/
+.sentinel-x/
 
-# AI assistant / IDE extension state
+# ─── AI assistant / IDE state (varies per developer) ─────────────────────────
 .agents/
 .augment/
 .claude/
 .junie/
 .continue/
+.husky/
+.github/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# API keys and secrets (local overrides)
-api_keys.json
-secrets.json
-*.secret
-config.local.json
-agent_models.local.json
+# ─── Test & coverage ─────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 
-# User-specific configuration
-.sentinel-x/
-providers.json
-agent_models.json
-investigation_log.json
-findings.json
+# ─── Build & distribution ────────────────────────────────────────────────────
+/dist/
+/build/
 
-# Temporary one-off scripts (not part of the product)
-run_test_scan.py
-seed_real_findings.py
-fix_fake_data.py
-nul
-_wire_new_scan.py
-_patch_app.py
-patch_recon.py
-test_*.py
-local_*.py
-dev_*.py
+# ─── Logs & temp ─────────────────────────────────────────────────────────────
+*.log
+logs/
+nohup.out
+*.db
+*.sqlite
+temp/
+tmp/
 
-# Frontend build artifacts
-frontend/dist/
-frontend/node_modules/
-frontend/.vite/
+# ─── Project data ────────────────────────────────────────────────────────────
+projects/
+storage/
 
-# Local settings override
-settings.local.yaml
-settings.local.json
+
+photo/

@@ -20,9 +20,8 @@ Implements the complete 12-stage validation pipeline:
 12. Confidence Calculation + Decision
 """
 
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
-
+from typing import Any
 
 # ── Enums / String constants ────────────────────────────────────────────────
 
@@ -52,9 +51,9 @@ class NormalizedFinding:
     parameter: str = ""
     reporter_claim: str = ""
     claimed_impact: str = ""
-    evidence_supplied: List[str] = field(default_factory=list)
-    reproduction_steps: List[str] = field(default_factory=list)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    evidence_supplied: list[str] = field(default_factory=list)
+    reproduction_steps: list[str] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -69,20 +68,20 @@ class ValidationResult:
     policy_status: str = "QUESTIONABLE"
     duplicate_status: str = "NOT_DUPLICATE"
 
-    facts: List[str] = field(default_factory=list)
-    inferences: List[str] = field(default_factory=list)
-    assumptions: List[str] = field(default_factory=list)
-    false_positive_explanations: List[str] = field(default_factory=list)
-    verified_claims: List[str] = field(default_factory=list)
-    unsupported_claims: List[str] = field(default_factory=list)
-    missing_evidence: List[str] = field(default_factory=list)
-    acceptance_reasons: List[str] = field(default_factory=list)
-    rejection_reasons: List[str] = field(default_factory=list)
-    analyst_notes: List[str] = field(default_factory=list)
+    facts: list[str] = field(default_factory=list)
+    inferences: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    false_positive_explanations: list[str] = field(default_factory=list)
+    verified_claims: list[str] = field(default_factory=list)
+    unsupported_claims: list[str] = field(default_factory=list)
+    missing_evidence: list[str] = field(default_factory=list)
+    acceptance_reasons: list[str] = field(default_factory=list)
+    rejection_reasons: list[str] = field(default_factory=list)
+    analyst_notes: list[str] = field(default_factory=list)
 
     # Internal stages (kept for traceability)
-    normalized: Optional[NormalizedFinding] = None
-    stages_run: List[str] = field(default_factory=list)
+    normalized: NormalizedFinding | None = None
+    stages_run: list[str] = field(default_factory=list)
 
 
 # ── Validation Engine Agent ──────────────────────────────────────────────────
@@ -104,13 +103,13 @@ class ValidationEngineAgent:
     def __init__(self, llm_provider=None, memory=None):
         self.llm_provider = llm_provider
         self.memory = memory
-        self.known_findings: List[Dict[str, Any]] = []
+        self.known_findings: list[dict[str, Any]] = []
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PUBLIC API
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def validate(self, finding: Dict[str, Any]) -> ValidationResult:
+    async def validate(self, finding: dict[str, Any]) -> ValidationResult:
         """Run full 12-stage validation on a finding. Returns decision + evidence."""
         result = ValidationResult()
         stages = []
@@ -183,7 +182,7 @@ class ValidationEngineAgent:
         result.stages_run = stages
         return result
 
-    async def batch_validate(self, findings: List[Dict[str, Any]]) -> List[ValidationResult]:
+    async def batch_validate(self, findings: list[dict[str, Any]]) -> list[ValidationResult]:
         """Validate multiple findings."""
         results = []
         for f in findings:
@@ -193,7 +192,7 @@ class ValidationEngineAgent:
             results.append(r)
         return results
 
-    def register_known_finding(self, finding: Dict[str, Any]):
+    def register_known_finding(self, finding: dict[str, Any]):
         """Register a known finding for duplicate detection."""
         self.known_findings.append(finding)
 
@@ -201,7 +200,7 @@ class ValidationEngineAgent:
     # STAGE 1 — FINDING NORMALIZATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage1_normalize(self, finding: Dict[str, Any]) -> NormalizedFinding:
+    def _stage1_normalize(self, finding: dict[str, Any]) -> NormalizedFinding:
         """Extract and normalize the finding. No validity determination yet."""
         vtype = self._detect_vuln_type(finding)
         asset = finding.get("target", finding.get("asset", ""))
@@ -245,7 +244,7 @@ class ValidationEngineAgent:
             raw=finding,
         )
 
-    def _detect_vuln_type(self, finding: Dict[str, Any]) -> str:
+    def _detect_vuln_type(self, finding: dict[str, Any]) -> str:
         """Detect vulnerability type from finding data."""
         vtype = finding.get("type", finding.get("vulnerability_type", "")).lower()
         if vtype and vtype in VULN_TYPES:
@@ -278,17 +277,17 @@ class ValidationEngineAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _stage2_facts(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """
         Extract only observable facts. Separate facts from inferences and assumptions.
 
         VALID facts: observable, measurable, verifiable.
         INVALID facts: conclusions, interpretations, assumptions.
         """
-        facts: List[str] = []
-        inferences: List[str] = []
-        assumptions: List[str] = []
+        facts: list[str] = []
+        inferences: list[str] = []
+        assumptions: list[str] = []
 
         # Extract from evidence
         evidence = normalized.evidence_supplied
@@ -370,8 +369,8 @@ class ValidationEngineAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def _stage3_adversarial(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> List[str]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> list[str]:
         """
         Generate at least five possible explanations why the finding might be invalid.
         Attempt to falsify the finding before accepting it.
@@ -380,7 +379,7 @@ class ValidationEngineAgent:
         Generates context-aware falsification attempts.
         Falls back to template-based falsification.
         """
-        explanations: List[str] = []
+        explanations: list[str] = []
 
         # Try AI-powered adversarial review
         if self.llm_provider and self.llm_provider.is_available:
@@ -467,7 +466,7 @@ class ValidationEngineAgent:
 
         return explanations[:8]  # Cap at 8 for readability
 
-    def _check_intended_functionality(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> bool:
+    def _check_intended_functionality(self, finding: dict[str, Any], normalized: NormalizedFinding) -> bool:
         """Check if behavior could be intended functionality."""
         desc = (finding.get("description", "") + " " + finding.get("title", "")).lower()
         return any(indicator in desc for indicator in [
@@ -475,14 +474,14 @@ class ValidationEngineAgent:
             "default", "administrative", "intentional",
         ])
 
-    def _check_scanner_artifact(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> bool:
+    def _check_scanner_artifact(self, finding: dict[str, Any], normalized: NormalizedFinding) -> bool:
         """Check if finding could be a scanner/tool artifact."""
         desc = (finding.get("description", "") + " " + finding.get("title", "")).lower()
         return any(indicator in desc for indicator in [
             "automated", "scanner", "tool detected", "generic", "template",
         ])
 
-    def _check_hypothetical_language(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> bool:
+    def _check_hypothetical_language(self, finding: dict[str, Any], normalized: NormalizedFinding) -> bool:
         """Check if finding uses only hypothetical/speculative language."""
         texts = [
             finding.get("description", ""),
@@ -499,7 +498,7 @@ class ValidationEngineAgent:
         )
         return hypothetical_count > 2
 
-    def _check_impact_speculation(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> bool:
+    def _check_impact_speculation(self, finding: dict[str, Any], normalized: NormalizedFinding) -> bool:
         """Check if impact is speculative rather than demonstrated."""
         impact = finding.get("impact", finding.get("claimed_impact", "")).lower()
         spec_words = ["could lead", "might allow", "could result", "potential impact", "could be used"]
@@ -509,7 +508,7 @@ class ValidationEngineAgent:
     # STAGE 4 — EVIDENCE VALIDATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage4_evidence(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> str:
+    def _stage4_evidence(self, finding: dict[str, Any], normalized: NormalizedFinding) -> str:
         """
         Evaluate evidence strength: NONE → WEAK → MODERATE → STRONG → CONCLUSIVE.
 
@@ -568,7 +567,7 @@ class ValidationEngineAgent:
     # STAGE 5 — REPRODUCIBILITY ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage5_reproducibility(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> int:
+    def _stage5_reproducibility(self, finding: dict[str, Any], normalized: NormalizedFinding) -> int:
         """
         Score 0-100: can another security engineer reproduce the finding?
 
@@ -624,8 +623,8 @@ class ValidationEngineAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def _stage6_vuln_specific(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """
         Apply validation rules based on vulnerability type.
         Returns (verified_claims, unsupported_claims, missing_evidence).
@@ -634,9 +633,9 @@ class ValidationEngineAgent:
         Falls back to deterministic validation rules.
         """
         vtype = normalized.vulnerability_type
-        verified: List[str] = []
-        unsupported: List[str] = []
-        missing: List[str] = []
+        verified: list[str] = []
+        unsupported: list[str] = []
+        missing: list[str] = []
 
         # Try AI-powered type-specific validation
         if self.llm_provider and self.llm_provider.is_available:
@@ -685,8 +684,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_xss(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """XSS requires: payload accepted, payload rendered, JS execution demonstrated."""
         verified, unsupported, missing = [], [], []
         desc = (finding.get("description", "") + " " + finding.get("title", "")).lower()
@@ -713,8 +712,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_sqli(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """SQLi requires: payload alters query behavior, injection evidence, alt explanations excluded."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -739,8 +738,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_idor(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """IDOR requires: object belongs to victim, attacker accesses it, auth bypass demonstrated."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -760,8 +759,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_ssrf(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """SSRF requires: outbound request generated, attacker-controlled destination reached."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -780,8 +779,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_auth_bypass(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """Auth bypass requires: restricted resource identified, access without auth, reproducible."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -800,8 +799,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_priv_esc(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """Privilege escalation requires: boundary identified, elevation demonstrated, capability verified."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -820,8 +819,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_cmd_injection(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """Command injection requires: execution demonstrated, input reaches exec context, output observed."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -840,8 +839,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_path_traversal(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """Path traversal requires: file access outside web root demonstrated."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -855,8 +854,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_xxe(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """XXE requires: XML parsing with external entity demonstrated."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -870,8 +869,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_ssti(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """SSTI requires: template injection demonstrated."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -885,8 +884,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_open_redirect(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """Open redirect requires: redirect to attacker-controlled destination."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -900,8 +899,8 @@ class ValidationEngineAgent:
         return verified, unsupported, missing
 
     def _validate_csrf(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding
-    ) -> tuple[List[str], List[str], List[str]]:
+        self, finding: dict[str, Any], normalized: NormalizedFinding
+    ) -> tuple[list[str], list[str], list[str]]:
         """CSRF requires: action performed without CSRF token / origin check."""
         verified, unsupported, missing = [], [], []
         evidence_str = " ".join(normalized.evidence_supplied).lower()
@@ -919,7 +918,7 @@ class ValidationEngineAgent:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _stage7_exploitability(
-        self, finding: Dict[str, Any], normalized: NormalizedFinding, evidence_q: str
+        self, finding: dict[str, Any], normalized: NormalizedFinding, evidence_q: str
     ) -> str:
         """
         Determine: NONE / LIMITED / MODERATE / HIGH.
@@ -967,7 +966,7 @@ class ValidationEngineAgent:
     # STAGE 8 — IMPACT VALIDATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage8_impact(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> str:
+    def _stage8_impact(self, finding: dict[str, Any], normalized: NormalizedFinding) -> str:
         """
         Verify demonstrated impact, reject impact inflation.
 
@@ -1022,7 +1021,7 @@ class ValidationEngineAgent:
     # STAGE 9 — POLICY VALIDATION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage9_policy(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> str:
+    def _stage9_policy(self, finding: dict[str, Any], normalized: NormalizedFinding) -> str:
         """
         Check: in scope, eligible class, no exclusions, no policy violations.
 
@@ -1062,7 +1061,7 @@ class ValidationEngineAgent:
     # STAGE 10 — DUPLICATE ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _stage10_duplicate(self, finding: Dict[str, Any], normalized: NormalizedFinding) -> str:
+    def _stage10_duplicate(self, finding: dict[str, Any], normalized: NormalizedFinding) -> str:
         """
         Compare: asset, endpoint, root cause, parameter, impact.
 
@@ -1120,7 +1119,7 @@ class ValidationEngineAgent:
 
     def _stage11_hallucination(
         self, result: ValidationResult
-    ) -> tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """
         For every acceptance reason, verify supporting evidence exists.
         If supporting evidence cannot be identified, remove the acceptance reason.
@@ -1130,8 +1129,8 @@ class ValidationEngineAgent:
         evidence fields that don't exist in the original finding.
         Never claim verification without evidence. Never invent proof.
         """
-        acceptance: List[str] = []
-        rejection: List[str] = []
+        acceptance: list[str] = []
+        rejection: list[str] = []
 
         # Build acceptance reasons from Stage 6 verified claims.
         # Stage 6 already performed type-specific logic (JS execution, SQL error, etc.),
@@ -1244,7 +1243,7 @@ class ValidationEngineAgent:
     # ANALYST NOTES
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _build_analyst_notes(self, result: ValidationResult) -> List[str]:
+    def _build_analyst_notes(self, result: ValidationResult) -> list[str]:
         """Build human-readable analyst notes summarizing the validation."""
         notes = []
 

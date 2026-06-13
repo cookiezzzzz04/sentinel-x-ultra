@@ -18,16 +18,15 @@ types into a single payload.
 from __future__ import annotations
 
 import textwrap
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 import structlog
 
-from .methodology import BLANK_MD_TEMPLATE_SECTIONS
 from .validation import (
     CandidateFinding,
-    EvidenceItem,
     ValidationOutcome,
 )
 

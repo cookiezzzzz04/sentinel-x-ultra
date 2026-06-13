@@ -1,0 +1,6 @@
+# param.txt - URLs that contain query parameters (=), used for SQLi / XSS / SSRF testing
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat urls.txt | grep '=' | tee param.txt
+https://example.com/?q=test

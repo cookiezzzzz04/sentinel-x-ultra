@@ -12,15 +12,12 @@ Provides infrastructure for efficient multi-agent execution:
 
 import asyncio
 import hashlib
-import json
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TypeVar
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from enum import Enum
 from collections import OrderedDict
-from heapq import heappush, heappop
-
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -79,7 +76,7 @@ class RateLimiter:
         pass
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "tokens_per_second": round(self.tokens_per_second, 1),
             "current_tokens": round(self._tokens, 1),
@@ -144,7 +141,7 @@ class CircuitBreaker:
             result = await fn(*args, **kwargs) if asyncio.iscoroutinefunction(fn) else fn(*args, **kwargs)
             await self._on_success()
             return result
-        except Exception as e:
+        except Exception:
             await self._on_failure()
             raise
 
@@ -175,7 +172,7 @@ class CircuitBreaker:
         self._success_count = 0
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "state": self._state.value,
@@ -210,7 +207,7 @@ class CacheEntry:
     value: Any = None
     created_at: float = 0.0
     ttl_seconds: float = 300.0
-    tags: Set[str] = field(default_factory=set)
+    tags: set[str] = field(default_factory=set)
     last_accessed: float = 0.0
 
     @property
@@ -230,8 +227,8 @@ class ResultCache:
     """
 
     def __init__(self, default_ttl: float = 300.0, max_entries: int = 1000):
-        self._entries: Dict[str, CacheEntry] = OrderedDict()
-        self._tag_index: Dict[str, Set[str]] = {}
+        self._entries: dict[str, CacheEntry] = OrderedDict()
+        self._tag_index: dict[str, set[str]] = {}
         self._default_ttl = default_ttl
         self._max_entries = max_entries
         self._hits = 0
@@ -256,7 +253,7 @@ class ResultCache:
 
     async def get_or_compute(
         self, key: str, compute_fn: Callable[[], Any],
-        ttl: Optional[float] = None, tags: Optional[List[str]] = None,
+        ttl: float | None = None, tags: list[str] | None = None,
     ) -> Any:
         entry = self._entries.get(key)
         if entry and not entry.is_expired:
@@ -280,7 +277,7 @@ class ResultCache:
                 self._tag_index[tag].add(key)
         return value
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         entry = self._entries.get(key)
         if entry and not entry.is_expired:
             self._hits += 1
@@ -289,7 +286,7 @@ class ResultCache:
         self._misses += 1
         return None
 
-    def set(self, key: str, value: Any, ttl: Optional[float] = None, tags: Optional[List[str]] = None):
+    def set(self, key: str, value: Any, ttl: float | None = None, tags: list[str] | None = None):
         self._evict_lru()
         self._entries[key] = CacheEntry(
             key=key, value=value, created_at=time.monotonic(),
@@ -326,7 +323,7 @@ class ResultCache:
             self.invalidate(k)
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "entries": len(self._entries),
             "hits": self._hits,
@@ -355,9 +352,9 @@ class TimeoutManager:
 
     def __init__(self, default_timeout: float = 30.0):
         self.default_timeout = default_timeout
-        self._circuit_breakers: Dict[str, CircuitBreaker] = {}
-        self._timed_out: Set[str] = set()
-        self._timeout_history: Dict[str, List[float]] = {}
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        self._timed_out: set[str] = set()
+        self._timeout_history: dict[str, list[float]] = {}
 
     def get_circuit_breaker(self, name: str) -> CircuitBreaker:
         """Get or create a circuit breaker for a named operation."""
@@ -367,7 +364,7 @@ class TimeoutManager:
             )
         return self._circuit_breakers[name]
 
-    def timeout(self, name: str, timeout: Optional[float] = None):
+    def timeout(self, name: str, timeout: float | None = None):
         """Create an async context manager that enforces a timeout."""
         return _TimeoutContext(
             name=name, timeout=timeout or self.default_timeout, manager=self,
@@ -399,11 +396,11 @@ class TimeoutManager:
         return self.default_timeout * 2.0
 
     @property
-    def timed_out_operations(self) -> List[str]:
+    def timed_out_operations(self) -> list[str]:
         return list(self._timed_out)
 
     @property
-    def timeout_trends(self) -> Dict[str, Any]:
+    def timeout_trends(self) -> dict[str, Any]:
         return {
             name: {
                 "count": len(times),
@@ -447,25 +444,25 @@ class ParallelExecutor:
     - Graceful shutdown: drain pending tasks on cancel
     """
 
-    def __init__(self, max_concurrency: int = 5, rate_limiter: Optional[RateLimiter] = None,
-                 timeout_manager: Optional[TimeoutManager] = None):
+    def __init__(self, max_concurrency: int = 5, rate_limiter: RateLimiter | None = None,
+                 timeout_manager: TimeoutManager | None = None):
         self.max_concurrency = max_concurrency
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._rate_limiter = rate_limiter or RateLimiter(tokens_per_second=20)
         self._timeout_manager = timeout_manager or TimeoutManager()
-        self._results: Dict[str, Any] = {}
-        self._errors: Dict[str, str] = {}
+        self._results: dict[str, Any] = {}
+        self._errors: dict[str, str] = {}
         self._completed = 0
         self._total = 0
-        self._pending: List[PriorityTask] = []
+        self._pending: list[PriorityTask] = []
         self._is_shutting_down = False
 
     async def run_batch(
-        self, tasks: List[Callable[[], Any]],
-        task_names: Optional[List[str]] = None,
+        self, tasks: list[Callable[[], Any]],
+        task_names: list[str] | None = None,
         timeout: float = 30.0, collect_results: bool = True,
-        priorities: Optional[List[int]] = None,
-    ) -> Dict[str, Any]:
+        priorities: list[int] | None = None,
+    ) -> dict[str, Any]:
         """
         Run a batch of tasks with controlled concurrency.
 
@@ -484,35 +481,34 @@ class ParallelExecutor:
         names = task_names or [f"task_{i}" for i in range(len(tasks))]
         prios = priorities or [5] * len(tasks)  # Default priority 5
 
-        async def _run_one(task: Callable, name: str) -> Tuple[str, Any]:
+        async def _run_one(task: Callable, name: str) -> tuple[str, Any]:
             # Check circuit breaker before running
             cb = self._timeout_manager.get_circuit_breaker(name)
             if not cb.is_available:
                 self._completed += 1
                 return name, {"error": f"Circuit breaker OPEN for '{name}'", "skipped": True}
 
-            async with self._semaphore:
-                async with self._rate_limiter:
-                    try:
-                        result = await asyncio.wait_for(
-                            cb.call(task), timeout=timeout,
-                        )
-                        self._completed += 1
-                        return name, result
-                    except CircuitBreakerOpenError:
-                        self._completed += 1
-                        return name, {"error": f"Circuit breaker OPEN", "skipped": True}
-                    except asyncio.TimeoutError:
-                        self._completed += 1
-                        return name, {"error": f"TIMEOUT after {timeout}s", "timed_out": True}
-                    except Exception as e:
-                        self._completed += 1
-                        return name, {"error": str(e)[:200]}
+            async with self._semaphore, self._rate_limiter:
+                try:
+                    result = await asyncio.wait_for(
+                        cb.call(task), timeout=timeout,
+                    )
+                    self._completed += 1
+                    return name, result
+                except CircuitBreakerOpenError:
+                    self._completed += 1
+                    return name, {"error": "Circuit breaker OPEN", "skipped": True}
+                except asyncio.TimeoutError:
+                    self._completed += 1
+                    return name, {"error": f"TIMEOUT after {timeout}s", "timed_out": True}
+                except Exception as e:
+                    self._completed += 1
+                    return name, {"error": str(e)[:200]}
 
         futures = [_run_one(t, n) for t, n in zip(tasks, names)]
         completed = await asyncio.gather(*futures)
 
-        output: Dict[str, Any] = {}
+        output: dict[str, Any] = {}
         for name, result in completed:
             if isinstance(result, dict) and "error" in result:
                 self._errors[name] = result["error"]
@@ -524,10 +520,10 @@ class ParallelExecutor:
         return output
 
     async def run_priority_batch(
-        self, tasks: List[Callable[[], Any]],
-        task_names: List[str], priorities: List[int],
+        self, tasks: list[Callable[[], Any]],
+        task_names: list[str], priorities: list[int],
         timeout: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run tasks ordered by priority (highest priority first).
 
@@ -554,7 +550,7 @@ class ParallelExecutor:
             await asyncio.sleep(0.5)  # Allow pending tasks to complete
 
     @property
-    def progress(self) -> Dict[str, Any]:
+    def progress(self) -> dict[str, Any]:
         return {
             "completed": self._completed,
             "total": self._total,
@@ -567,10 +563,10 @@ class ParallelExecutor:
 
 # ── Convenience Factory ─────────────────────────────────────────────────────
 
-_default_executor: Optional[ParallelExecutor] = None
-_default_cache: Optional[ResultCache] = None
-_default_rate_limiter: Optional[RateLimiter] = None
-_default_timeout_manager: Optional[TimeoutManager] = None
+_default_executor: ParallelExecutor | None = None
+_default_cache: ResultCache | None = None
+_default_rate_limiter: RateLimiter | None = None
+_default_timeout_manager: TimeoutManager | None = None
 
 
 def get_parallel_executor(max_concurrency: int = 5) -> ParallelExecutor:

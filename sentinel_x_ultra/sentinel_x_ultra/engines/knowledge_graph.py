@@ -241,7 +241,7 @@ class KnowledgeGraphEngine:
                 self._reverse_adjacency[relationship.source_id] = []
             self._reverse_adjacency[relationship.source_id].append(relationship.target_id)
 
-        logger.debug("relationship_added", 
+        logger.debug("relationship_added",
                      relationship_id=relationship.id,
                      source=relationship.source_id,
                      target=relationship.target_id)

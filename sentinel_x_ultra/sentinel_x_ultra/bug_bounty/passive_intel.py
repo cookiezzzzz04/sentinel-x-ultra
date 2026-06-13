@@ -41,15 +41,13 @@ Core rules:
  20.  Analyst Challenge Process
 """
 
-import re
 import asyncio
 import json
-from typing import Any, Dict, List, Optional, Tuple
+import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from pathlib import Path
-
+from typing import Any
 
 # ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -105,13 +103,13 @@ class DiscoveredAsset:
     asset_type: str = ""
     source: str = ""
     confidence: float = 0.0
-    evidence: List[str] = field(default_factory=list)
-    evidence_chain: List[EvidenceChainItem] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    evidence_chain: list[EvidenceChainItem] = field(default_factory=list)
     first_seen: str = ""
     last_seen: str = ""
     priority: str = "MEDIUM_VALUE"
     priority_score: int = 50
-    priority_reasoning: List[str] = field(default_factory=list)
+    priority_reasoning: list[str] = field(default_factory=list)
     ownership: str = "UNKNOWN_OWNER"
 
 
@@ -129,7 +127,7 @@ class AttackSurfaceEntry:
     asset: str = ""
     classification: str = "MEDIUM_VALUE"
     priority_score: int = 50
-    reasoning: List[str] = field(default_factory=list)
+    reasoning: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -153,8 +151,8 @@ class CollectionPlanItem:
 class CrossSourceCorrelation:
     """A correlation across multiple intelligence sources."""
     asset: str = ""
-    sources: List[str] = field(default_factory=list)
-    relationships: List[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
+    relationships: list[str] = field(default_factory=list)
     overall_confidence: float = 0.0
 
 
@@ -168,16 +166,16 @@ class QualityScore:
     source_diversity_score: float = 0.0
     ownership_confidence_score: float = 0.0
     corroboration_score: float = 0.0
-    flags: List[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ChallengeResult:
     """Result of an analyst challenge attempt."""
     asset: str = ""
-    challenges: List[str] = field(default_factory=list)
-    concerns_resolved: List[str] = field(default_factory=list)
-    concerns_unresolved: List[str] = field(default_factory=list)
+    challenges: list[str] = field(default_factory=list)
+    concerns_resolved: list[str] = field(default_factory=list)
+    concerns_unresolved: list[str] = field(default_factory=list)
     confidence_adjustment: float = 0.0  # negative or zero
 
 
@@ -192,44 +190,44 @@ class PassiveIntelResult:
     """
     # Original fields (backward compatible)
     domain: str = ""
-    subdomains: List[str] = field(default_factory=list)
-    technologies: List[Dict[str, str]] = field(default_factory=list)
-    email_addresses: List[str] = field(default_factory=list)
-    social_media: List[str] = field(default_factory=list)
-    job_postings: List[Dict[str, str]] = field(default_factory=list)
-    certificate_info: List[Dict[str, str]] = field(default_factory=list)
-    dns_records: Dict[str, List[str]] = field(default_factory=dict)
-    archived_urls: List[str] = field(default_factory=list)
-    interesting_files: List[str] = field(default_factory=list)
-    sources_checked: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    subdomains: list[str] = field(default_factory=list)
+    technologies: list[dict[str, str]] = field(default_factory=list)
+    email_addresses: list[str] = field(default_factory=list)
+    social_media: list[str] = field(default_factory=list)
+    job_postings: list[dict[str, str]] = field(default_factory=list)
+    certificate_info: list[dict[str, str]] = field(default_factory=list)
+    dns_records: dict[str, list[str]] = field(default_factory=dict)
+    archived_urls: list[str] = field(default_factory=list)
+    interesting_files: list[str] = field(default_factory=list)
+    sources_checked: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     # New OSINT fields (Agent 4 full output schema)
-    assets: List[Dict[str, Any]] = field(default_factory=list)
-    evidence_chains: List[Dict[str, Any]] = field(default_factory=list)
-    historical_assets: List[Dict[str, Any]] = field(default_factory=list)
-    repositories: List[Dict[str, Any]] = field(default_factory=list)
-    documentation: List[Dict[str, Any]] = field(default_factory=list)
-    cloud_intelligence: List[Dict[str, Any]] = field(default_factory=list)
-    organizational_intelligence: List[Dict[str, Any]] = field(default_factory=list)
-    exposure_intelligence: List[Dict[str, Any]] = field(default_factory=list)
-    attack_surface_map: List[Dict[str, Any]] = field(default_factory=list)
-    contradictions: List[str] = field(default_factory=list)
-    uncertainties: List[str] = field(default_factory=list)
-    source_reliability: List[Dict[str, Any]] = field(default_factory=list)
-    confidence_scores: List[Dict[str, Any]] = field(default_factory=list)
-    supporting_evidence: List[str] = field(default_factory=list)
-    recommended_priority_targets: List[str] = field(default_factory=list)
-    downstream_guidance: Dict[str, Any] = field(default_factory=dict)
+    assets: list[dict[str, Any]] = field(default_factory=list)
+    evidence_chains: list[dict[str, Any]] = field(default_factory=list)
+    historical_assets: list[dict[str, Any]] = field(default_factory=list)
+    repositories: list[dict[str, Any]] = field(default_factory=list)
+    documentation: list[dict[str, Any]] = field(default_factory=list)
+    cloud_intelligence: list[dict[str, Any]] = field(default_factory=list)
+    organizational_intelligence: list[dict[str, Any]] = field(default_factory=list)
+    exposure_intelligence: list[dict[str, Any]] = field(default_factory=list)
+    attack_surface_map: list[dict[str, Any]] = field(default_factory=list)
+    contradictions: list[str] = field(default_factory=list)
+    uncertainties: list[str] = field(default_factory=list)
+    source_reliability: list[dict[str, Any]] = field(default_factory=list)
+    confidence_scores: list[dict[str, Any]] = field(default_factory=list)
+    supporting_evidence: list[str] = field(default_factory=list)
+    recommended_priority_targets: list[str] = field(default_factory=list)
+    downstream_guidance: dict[str, Any] = field(default_factory=dict)
 
     # New v2 fields
-    ownership_verifications: List[Dict[str, Any]] = field(default_factory=list)
-    intelligence_gaps: List[Dict[str, Any]] = field(default_factory=list)
-    collection_plan: List[Dict[str, Any]] = field(default_factory=list)
-    cross_source_correlations: List[Dict[str, Any]] = field(default_factory=list)
-    quality_scores: List[Dict[str, Any]] = field(default_factory=list)
-    challenge_results: List[Dict[str, Any]] = field(default_factory=list)
-    source_correlations: List[Dict[str, Any]] = field(default_factory=list)
+    ownership_verifications: list[dict[str, Any]] = field(default_factory=list)
+    intelligence_gaps: list[dict[str, Any]] = field(default_factory=list)
+    collection_plan: list[dict[str, Any]] = field(default_factory=list)
+    cross_source_correlations: list[dict[str, Any]] = field(default_factory=list)
+    quality_scores: list[dict[str, Any]] = field(default_factory=list)
+    challenge_results: list[dict[str, Any]] = field(default_factory=list)
+    source_correlations: list[dict[str, Any]] = field(default_factory=list)
 
     # Convenience alias
     @property
@@ -237,13 +235,13 @@ class PassiveIntelResult:
         return self.domain
 
     @property
-    def domains(self) -> List[str]:
+    def domains(self) -> list[str]:
         return [a["asset"] for a in self.assets if a.get("asset_type") in ("DOMAIN", "SUBDOMAIN")]
 
 
 # ── Source Reliability Defaults ─────────────────────────────────────────────
 
-SOURCE_RELIABILITY_MAP: Dict[str, str] = {
+SOURCE_RELIABILITY_MAP: dict[str, str] = {
     "crt.sh": "HIGH",
     "google_ct": "HIGH",
     "censys_ct": "HIGH",
@@ -327,9 +325,9 @@ class PassiveIntelligenceAgent:
             "urlscan",
         ]
         # CT log cache: domain -> (timestamp, [(subdomain, confidence, evidence)])
-        self._ct_cache: Dict[str, Tuple[datetime, List[Tuple[str, float, List[str]]]]] = {}
+        self._ct_cache: dict[str, tuple[datetime, list[tuple[str, float, list[str]]]]] = {}
         self._ct_cache_ttl = timedelta(hours=24)
-        self._last_ct_request: Optional[datetime] = None
+        self._last_ct_request: datetime | None = None
         self._ct_rate_limit = timedelta(seconds=5)  # 1 request per 5 seconds
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -484,7 +482,7 @@ class PassiveIntelligenceAgent:
                                         "asset_type": "SUBDOMAIN",
                                         "source": "securitytrails",
                                         "confidence": 0.85,
-                                        "evidence": [f"Discovered via SecurityTrails API"],
+                                        "evidence": ["Discovered via SecurityTrails API"],
                                         "evidence_chain": [
                                             {"source": "securitytrails", "observation": f"API returned subdomain: {sub}", "confidence": 0.85}
                                         ],
@@ -492,7 +490,7 @@ class PassiveIntelligenceAgent:
                                         "last_seen": datetime.now(timezone.utc).isoformat(),
                                         "priority": "MEDIUM_VALUE",
                                         "priority_score": 60,
-                                        "priority_reasoning": [f"Discovered via SecurityTrails"],
+                                        "priority_reasoning": ["Discovered via SecurityTrails"],
                                         "ownership": "LIKELY_OWNER",
                                     })
                         # Censys returns certificate data with SAN names
@@ -509,7 +507,7 @@ class PassiveIntelligenceAgent:
                                                 "asset_type": "SUBDOMAIN",
                                                 "source": "censys_ct",
                                                 "confidence": 0.9,
-                                                "evidence": [f"Observed in Censys certificate transparency data"],
+                                                "evidence": ["Observed in Censys certificate transparency data"],
                                                 "evidence_chain": [
                                                     {"source": "censys_ct", "observation": f"Certificate SAN: {name}", "confidence": 0.9}
                                                 ],
@@ -517,7 +515,7 @@ class PassiveIntelligenceAgent:
                                                 "last_seen": datetime.now(timezone.utc).isoformat(),
                                                 "priority": "MEDIUM_VALUE",
                                                 "priority_score": 65,
-                                                "priority_reasoning": [f"Discovered via Censys certificate search"],
+                                                "priority_reasoning": ["Discovered via Censys certificate search"],
                                                 "ownership": "LIKELY_OWNER",
                                             })
                         # URLScan returns page data with domains and URLs
@@ -546,7 +544,7 @@ class PassiveIntelligenceAgent:
                                                 "asset_type": "SUBDOMAIN",
                                                 "source": "shodan",
                                                 "confidence": 0.8,
-                                                "evidence": [f"Observed in Shodan hostname data"],
+                                                "evidence": ["Observed in Shodan hostname data"],
                                                 "evidence_chain": [
                                                     {"source": "shodan", "observation": f"Shodan hostname: {hn}", "confidence": 0.8}
                                                 ],
@@ -554,7 +552,7 @@ class PassiveIntelligenceAgent:
                                                 "last_seen": datetime.now(timezone.utc).isoformat(),
                                                 "priority": "MEDIUM_VALUE",
                                                 "priority_score": 60,
-                                                "priority_reasoning": [f"Discovered via Shodan"],
+                                                "priority_reasoning": ["Discovered via Shodan"],
                                                 "ownership": "LIKELY_OWNER",
                                             })
             except Exception:
@@ -638,9 +636,9 @@ class PassiveIntelligenceAgent:
                 "asset_type": "ENDPOINT",
                 "source": "wayback_machine",
                 "confidence": 0.85,
-                "evidence": [f"Archived in Wayback Machine (web.archive.org)"],
+                "evidence": ["Archived in Wayback Machine (web.archive.org)"],
                 "evidence_chain": [
-                    {"source": "wayback_machine", "observation": f"Archived in Wayback Machine (web.archive.org)", "confidence": 0.85}
+                    {"source": "wayback_machine", "observation": "Archived in Wayback Machine (web.archive.org)", "confidence": 0.85}
                 ],
                 "first_seen": "",
                 "last_seen": "",
@@ -772,9 +770,9 @@ class PassiveIntelligenceAgent:
                 "type": "documentation_endpoint",
                 "source": "pattern_analysis",
                 "confidence": 0.3,
-                "evidence": [f"Inferred documentation endpoint — requires passive verification"],
+                "evidence": ["Inferred documentation endpoint — requires passive verification"],
                 "evidence_chain": [
-                    {"source": "pattern_analysis", "observation": f"Inferred documentation endpoint — requires passive verification", "confidence": 0.3}
+                    {"source": "pattern_analysis", "observation": "Inferred documentation endpoint — requires passive verification", "confidence": 0.3}
                 ],
             })
 
@@ -844,9 +842,9 @@ class PassiveIntelligenceAgent:
                 "type": "potential_exposure_point",
                 "source": "pattern_analysis",
                 "confidence": 0.3,
-                "evidence": [f"Common file pattern — requires passive verification via Wayback Machine"],
+                "evidence": ["Common file pattern — requires passive verification via Wayback Machine"],
                 "evidence_chain": [
-                    {"source": "pattern_analysis", "observation": f"Common file pattern — requires passive verification via Wayback Machine", "confidence": 0.3}
+                    {"source": "pattern_analysis", "observation": "Common file pattern — requires passive verification via Wayback Machine", "confidence": 0.3}
                 ],
             })
             result.supporting_evidence.append(
@@ -924,7 +922,7 @@ class PassiveIntelligenceAgent:
                 kw in asset.lower() for kw in ["admin", "auth", "login", "backoffice", "internal", "dev", "staging"]
             ):
                 score += 15
-                reasoning.append(f"Administrative/internal subdomain — higher value")
+                reasoning.append("Administrative/internal subdomain — higher value")
 
             # Authentication boundaries
             if any(kw in asset.lower() for kw in ["auth", "login", "sso", "oauth", "token"]):
@@ -1064,7 +1062,7 @@ class PassiveIntelligenceAgent:
         Do not resolve through assumptions.
         """
         # Check for duplicate assets with different confidence levels
-        seen_assets: Dict[str, List[float]] = {}
+        seen_assets: dict[str, list[float]] = {}
         for asset_entry in result.assets:
             asset = asset_entry.get("asset", "")
             conf = asset_entry.get("confidence", 0)
@@ -1085,7 +1083,7 @@ class PassiveIntelligenceAgent:
             )
 
         # Check for conflicting asset types (same asset, different types)
-        asset_type_map: Dict[str, List[str]] = {}
+        asset_type_map: dict[str, list[str]] = {}
         for a in result.assets:
             asset = a.get("asset", "")
             atype = a.get("asset_type", "")
@@ -1217,7 +1215,7 @@ class PassiveIntelligenceAgent:
         high_conf_assets = [a for a in result.assets if a.get("confidence", 0) >= 0.8]
         hist_assets = result.historical_assets
 
-        guidance: Dict[str, Any] = {
+        guidance: dict[str, Any] = {
             "asset_discovery_recommendations": [],
             "scanner_recommendations": [],
             "validation_recommendations": [],
@@ -1262,7 +1260,7 @@ class PassiveIntelligenceAgent:
         - Multi-source assets receive confidence boost
         """
         # Count sources per asset
-        asset_sources: Dict[str, List[str]] = {}
+        asset_sources: dict[str, list[str]] = {}
 
         # Collect from assets list
         for a in result.assets:
@@ -1355,7 +1353,7 @@ class PassiveIntelligenceAgent:
                     reasoning.append(f"Asset uses known third-party infrastructure ({asset.split('.')[-2:]})")
                 else:
                     ownership = OwnershipStatus.LIKELY_OWNER.value
-                    reasoning.append(f"Subdomain of target domain — likely owned by target organization")
+                    reasoning.append("Subdomain of target domain — likely owned by target organization")
 
             # CT-discovered subdomain
             elif source == "crt.sh" and (asset.endswith(f".{domain}") or asset.endswith(f".{root_domain}")):
@@ -1478,7 +1476,7 @@ class PassiveIntelligenceAgent:
         domain = result.domain
 
         # Collect all unique asset references across sources
-        asset_references: Dict[str, List[Dict[str, Any]]] = {}
+        asset_references: dict[str, list[dict[str, Any]]] = {}
 
         # From CT logs (assets list)
         for a in result.assets:
@@ -1830,7 +1828,7 @@ class PassiveIntelligenceAgent:
     # HELPER METHODS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _query_crtsh(self, domain: str) -> Tuple[List[str], List[Dict[str, Any]]]:
+    async def _query_crtsh(self, domain: str) -> tuple[list[str], list[dict[str, Any]]]:
         """Query Certificate Transparency logs for observed subdomains (passive).
 
         Makes an HTTP request to crt.sh API: https://crt.sh/?q=%25.{domain}&output=json
@@ -1867,7 +1865,7 @@ class PassiveIntelligenceAgent:
                         "last_seen": datetime.now(timezone.utc).isoformat(),
                         "priority": "MEDIUM_VALUE",
                         "priority_score": 60,
-                        "priority_reasoning": [f"Discovered via Certificate Transparency log"],
+                        "priority_reasoning": ["Discovered via Certificate Transparency log"],
                         "ownership": "LIKELY_OWNER",
                     }
                     for item in cached_data
@@ -1908,7 +1906,7 @@ class PassiveIntelligenceAgent:
                 return [], []
 
             # Parse unique subdomains from certificate name_value fields
-            unique_subdomains: Dict[str, Tuple[float, List[str]]] = {}
+            unique_subdomains: dict[str, tuple[float, list[str]]] = {}
             for cert in certs:
                 name_value = cert.get("name_value", "")
                 if not name_value:
@@ -1949,7 +1947,7 @@ class PassiveIntelligenceAgent:
                     "last_seen": datetime.now(timezone.utc).isoformat(),
                     "priority": "MEDIUM_VALUE",
                     "priority_score": 60,
-                    "priority_reasoning": [f"Discovered via Certificate Transparency log"],
+                    "priority_reasoning": ["Discovered via Certificate Transparency log"],
                     "ownership": "LIKELY_OWNER",
                 })
 
@@ -1966,7 +1964,7 @@ class PassiveIntelligenceAgent:
         except Exception:
             return [], []
 
-    def _analyze_dns_patterns(self, domain: str) -> Dict[str, List[str]]:
+    def _analyze_dns_patterns(self, domain: str) -> dict[str, list[str]]:
         """Analyze DNS patterns from public data (passive).
 
         No actual DNS queries — uses pattern analysis of public records.
@@ -1978,7 +1976,7 @@ class PassiveIntelligenceAgent:
             "cname_records": [],
         }
 
-    def _query_wayback(self, domain: str) -> List[str]:
+    def _query_wayback(self, domain: str) -> list[str]:
         """Get archived URLs from Wayback Machine (passive).
 
         In production, queries: https://web.archive.org/cdx/search/cdx?url={domain}&output=json
@@ -1989,12 +1987,12 @@ class PassiveIntelligenceAgent:
             f"https://{domain}/sitemap.xml",
         ]
 
-    def _detect_technologies(self, domain: str) -> List[Dict[str, str]]:
+    def _detect_technologies(self, domain: str) -> list[dict[str, str]]:
         """Detect technologies from public data (no direct access to target).
 
         Only reports technologies that can be inferred from passive data sources.
         """
-        technologies: List[Dict[str, str]] = []
+        technologies: list[dict[str, str]] = []
         domain_lower = domain.lower()
 
         # Cloud provider detection from domain patterns
@@ -2017,12 +2015,12 @@ class PassiveIntelligenceAgent:
                     "category": "Cloud Provider",
                     "confidence": 0.7,
                     "evidence": [f"Domain pattern '{pattern}' suggests {provider}"],
-                    "hint": f"Inferred from domain name pattern — verify via passive sources",
+                    "hint": "Inferred from domain name pattern — verify via passive sources",
                 })
 
         return technologies
 
-    def _find_interesting_files(self, domain: str) -> List[str]:
+    def _find_interesting_files(self, domain: str) -> list[str]:
         """Identify interesting files via historical/common patterns.
 
         These are documented industry-standard file paths, not guesses.

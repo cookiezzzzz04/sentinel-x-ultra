@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
-import os
-from pathlib import Path
-from contextlib import asynccontextmanager
-from typing import Any, Dict
-
-import structlog
 import json
-from dotenv import load_dotenv  # Load .env file for Phase 5 API keys
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+import os
+import uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
 import httpx
+import structlog
+from dotenv import load_dotenv  # Load .env file for Phase 5 API keys
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Load environment variables from .env file (for Phase 5 API keys)
 _env_path = Path(__file__).parent.parent / ".env"
@@ -25,86 +25,89 @@ if _env_path.exists():
     load_dotenv(_env_path)
     print(f"[SENTINEL-X] Loaded environment variables from {_env_path}")
 
-from .config import Settings, load_settings
-from .memory import MemoryEngine, ProjectMemory, ScopeGraph
-from .providers import (
-    ProviderRegistry,
-    MultiProviderRouter,
-    ProviderConfig,
-    LLMMessage,
-    MessageRole,
-    ProviderType,
-)
+# Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
+import time
+
 from .agents import (
-    MessageBus,
-    AgentRegistry,
-    BaseAgent,
-    AgentType,
-    TaskPayload,
     AgentMessage,
-    MessageType,
+    AgentRegistry,
+    MessageBus,
+    TaskPayload,
 )
 
-# Phase 2 imports - Engines and Analyzers
-from .engines import (
-    KnowledgeGraphEngine,
-    PermissionGraphEngine,
-    BusinessRuleEngine,
+# Phase 3 imports - Agents
+from .agents.phase3 import (
+    CodeReviewAgent,
+    DebateAgent,
+    DependencyAgent,
+    Finding,
+    ReconAgent,
+    ThreatModelingAgent,
+)
+
+# Phase 4 imports - Remediation, Reporting, Compliance
+from .agents.phase4 import (
+    ComplianceEngine,
+    RemediationAgent,
+    ReportGenerator,
+)
+
+# Phase 5 imports - Advanced Security Operations
+from .agents.phase5 import (
+    AdaptiveDefenseAgent,
+    APISecurityAgent,
+    SecurityOperationsAgent,
+    SupplyChainAgent,
+    ThreatIntelligenceAgent,
 )
 from .analyzers import (
     CodeAnalyzer,
     WebAnalyzer,
 )
+from .bug_bounty import (
+    AGENT_ARCHITECTURE,
+    DECISION_HIERARCHY,
+    FOUNDATIONAL_PRINCIPLES,
+    BugBountyOrchestrator,
+    PolicyEnforcerAgent,
+    ScopeGuardianAgent,
+    URLParserAgent,
+    get_full_system_prompt,
+)
+
+# Module-level bug bounty variables used by agent endpoints & scan pipeline
+bb_system_prompt: str = get_full_system_prompt()
+bb_ethical_rules: str = """
+FOUNDATIONAL PRINCIPLES for Bug Bounty Hunting:
+1. NEVER test unauthorized targets
+2. NEVER cause service disruption or data loss
+3. ALWAYS operate read-only
+4. ALWAYS validate findings before reporting
+5. Scope is law - if not in-scope, it is out-of-scope
+6. Quality over quantity - validate every finding
+"""
+
+from .config import load_settings
+
+# Phase 2 imports - Engines and Analyzers
+from .engines import (
+    BusinessRuleEngine,
+    KnowledgeGraphEngine,
+    PermissionGraphEngine,
+)
+from .memory import MemoryEngine, ScopeGraph
+from .providers import (
+    LLMMessage,
+    MessageRole,
+    MultiProviderRouter,
+    ProviderConfig,
+    ProviderRegistry,
+    ProviderType,
+)
 from .rag import RAGEngine
-
-# Phase 3 imports - Agents
-from .agents.phase3 import (
-    ReconAgent,
-    CodeReviewAgent,
-    ThreatModelingAgent,
-    DependencyAgent,
-    DebateAgent,
-    Finding,
-)
-
-# Phase 4 imports - Remediation, Reporting, Compliance
-from .agents.phase4 import (
-    RemediationAgent,
-    ReportGenerator,
-    ComplianceEngine,
-)
-
-# Phase 5 imports - Advanced Security Operations
-from .agents.phase5 import (
-    ThreatIntelligenceAgent,
-    SecurityOperationsAgent,
-    AdaptiveDefenseAgent,
-    SupplyChainAgent,
-    APISecurityAgent,
-)
 
 # Reconnaissance tools integration (Phase 3 extended)
 from .recon_api import register_recon_endpoints
-
-# Bug Bounty Multi-Agent Framework v7.0 (10 specialized agents)
-import time
-from .bug_bounty import (
-    BugBountyOrchestrator,
-    URLParserAgent,
-    PolicyEnforcerAgent,
-    ScopeGuardianAgent,
-    PassiveIntelligenceAgent,
-    ActiveEnumerationAgent,
-    VulnerabilityScannerAgent,
-    ValidationEngineAgent,
-    ExploitationAgent,
-    AnalysisAgent,
-    ReportGenerationAgent,
-    get_full_system_prompt,
-    FOUNDATIONAL_PRINCIPLES,
-    DECISION_HIERARCHY,
-    AGENT_ARCHITECTURE,
-)
 
 structlog.configure(
     processors=[
@@ -127,17 +130,17 @@ class EventStore:
     Stores events in memory (for the active session).
     Maximum 10,000 events retained.
     """
-    
+
     def __init__(self, max_events: int = 10000):
         self._events: list[dict] = []
         self._max_events = max_events
-    
+
     def append(self, event: dict):
         """Add an event to the store."""
         self._events.append(event)
         if len(self._events) > self._max_events:
             self._events = self._events[-self._max_events:]
-    
+
     def get_events(self, limit: int = 200, offset: int = 0,
                    event_type: str | None = None,
                    status: str | None = None,
@@ -159,10 +162,10 @@ class EventStore:
             filtered = [e for e in filtered if search_lower in e.get("message", "").lower()
                         or search_lower in str(e.get("details", "")).lower()]
         return filtered[offset:offset+limit], len(filtered)
-    
+
     def clear(self):
         self._events = []
-    
+
     def get_status_summary(self) -> dict:
         """Get a summary of current system status from recent events."""
         recent = self._events[-500:] if len(self._events) > 500 else self._events
@@ -178,7 +181,7 @@ class EventStore:
             "latest_completed": completed[-5:] if completed else [],
             "latest_failed": failed[-5:] if failed else [],
         }
-    
+
     def get_system_status(self) -> dict:
         """Get detailed system health."""
         recent = self._events[-200:] if len(self._events) > 200 else self._events
@@ -235,7 +238,7 @@ async def emit_rich_event(
         event["duration_ms"] = duration_ms
     if metadata:
         event["metadata"] = metadata
-    
+
     # Store for history
     event_store.append(event)
     # Broadcast via WebSocket
@@ -244,11 +247,11 @@ async def emit_rich_event(
 
 class ActivityBus:
     """Manages WebSocket connections and broadcasts activity events."""
-    
+
     def __init__(self):
         self._connections: dict[str, set[WebSocket]] = {}
         self._global_connections: set[WebSocket] = set()
-    
+
     def register(self, ws: WebSocket, project_id: str | None = None):
         if project_id:
             if project_id not in self._connections:
@@ -256,7 +259,7 @@ class ActivityBus:
             self._connections[project_id].add(ws)
         else:
             self._global_connections.add(ws)
-    
+
     def unregister(self, ws: WebSocket, project_id: str | None = None):
         if project_id and project_id in self._connections:
             self._connections[project_id].discard(ws)
@@ -264,7 +267,7 @@ class ActivityBus:
                 del self._connections[project_id]
         else:
             self._global_connections.discard(ws)
-    
+
     async def broadcast(self, event: dict, project_id: str | None = None):
         if "type" not in event:
             event["type"] = "system"
@@ -277,11 +280,11 @@ class ActivityBus:
             event["message"] = ""
         if "id" not in event:
             event["id"] = str(uuid.uuid4())[:8]
-        
+
         targets: set[WebSocket] = set(self._global_connections)
         if project_id and project_id in self._connections:
             targets.update(self._connections[project_id])
-        
+
         disconnected = set()
         for ws in targets:
             try:
@@ -290,7 +293,7 @@ class ActivityBus:
                 disconnected.add(ws)
         for ws in disconnected:
             self.unregister(ws, project_id)
-    
+
     async def emit(self, event_type: str, message: str, status: str = "running",
                    project_id: str | None = None, details: str | None = None,
                    icon: str | None = None, tool_name: str | None = None,
@@ -326,7 +329,7 @@ def _load_provider_configs():
     global provider_key_map
     if provider_config_file.exists():
         try:
-            with open(provider_config_file, 'r') as f:
+            with open(provider_config_file) as f:
                 data = json.load(f)
                 provider_key_map = data.get('providers', {})
                 logger.info("provider_configs_loaded", count=len(provider_key_map))
@@ -348,7 +351,7 @@ def _load_agent_configs():
     global agent_model_configs
     if agent_config_file.exists():
         try:
-            with open(agent_config_file, 'r') as f:
+            with open(agent_config_file) as f:
                 data = json.load(f)
                 agent_model_configs = data.get('agents', {})
                 logger.info("agent_configs_loaded", count=len(agent_model_configs))
@@ -657,7 +660,7 @@ async def lifespan(app: FastAPI):
 
     # Load provider configurations from file
     _load_provider_configs()
-    
+
     # Load agent model configurations from file
     _load_agent_configs()
 
@@ -702,7 +705,7 @@ async def lifespan(app: FastAPI):
             await llm_router.close()
         except Exception as e:
             logger.error("llm_router_close_failed", error=str(e))
-    
+
     # Cleanup Phase 2 engines
     knowledge_graphs.clear()
     permission_graphs.clear()
@@ -710,16 +713,35 @@ async def lifespan(app: FastAPI):
     code_analyzers.clear()
     web_analyzers.clear()
     rag_engines.clear()
-    
+
     logger.info("sentinel_x_stopped")
 
+
+# OpenAPI tag metadata for structured docs (visible at /docs)
+openapi_tags = [
+    {"name": "System", "description": "Health checks, root, and system status"},
+    {"name": "Projects", "description": "Create, list, get, and delete security projects"},
+    {"name": "Configuration", "description": "LLM provider config, API key management, model settings"},
+    {"name": "Analysis", "description": "Code analysis (SAST), web vuln scanning, knowledge graphs, permission graphs, business rules, RAG"},
+    {"name": "Agents (Phase 3)", "description": "Reconnaissance, code review, threat modeling, dependency scanning, adversarial debate"},
+    {"name": "Agents (Phase 4)", "description": "Remediation planning, report generation, compliance assessment"},
+    {"name": "Agents (Phase 5)", "description": "Threat intel, security operations, adaptive defense, supply chain, API security"},
+    {"name": "Bug Bounty", "description": "Bug Bounty Multi-Agent Framework v7.0 — 10-agent pipeline, URL parsing, ethical rules"},
+    {"name": "Auto-Select", "description": "Vulnerability-to-agent recommendation engine — detect, recommend, and run the best agent"},
+    {"name": "Burp Suite", "description": "Burp Suite Professional integration — connect, fetch history, scan proxy data"},
+    {"name": "Input", "description": "Upload URLs, code files, folders, and prompts for analysis"},
+    {"name": "Debug", "description": "Debug and testing endpoints for development"},
+]
 
 # Create FastAPI app
 app = FastAPI(
     title="SENTINEL-X ULTRA",
-    description="Autonomous Security Analysis Intelligence Framework",
+    description="Autonomous Security Analysis Intelligence Framework — AI-powered bug bounty hunting, vulnerability scanning, and security analysis platform with 10+ specialized agents and multi-provider LLM support.",
     version="0.1.0",
     lifespan=lifespan,
+    openapi_tags=openapi_tags,
+    contact={"name": "Sentinel-X Team", "url": "https://github.com/your-org/Sentinel-X-Ultra"},
+    license_info={"name": "Proprietary", "identifier": "Proprietary"},
 )
 
 # Register reconnaissance API endpoints
@@ -770,6 +792,7 @@ async def create_project(req: CreateProjectRequest):
     folder_status = "not_provided"
     if req.folder:
         from pathlib import Path as _P
+
         from .seed_templates import seed_empty_folder
         folder_path = _P(req.folder)
         try:
@@ -870,7 +893,7 @@ async def save_api_key(req: ApiKeyRequest):
         _save_provider_configs()
     except Exception as e:
         logger.error("save_provider_failed", error=str(e))
-        return {"status": "error", "error": f"Failed to save configuration: {str(e)}"}
+        return {"status": "error", "error": f"Failed to save configuration: {e!s}"}
     return {"status": "ok", "provider": req.provider}
 
 
@@ -904,7 +927,7 @@ async def save_agent_model_configs(req: AgentModelConfigRequest):
         _save_agent_configs()
     except Exception as e:
         logger.error("save_agent_configs_failed", error=str(e))
-        return {"status": "error", "error": f"Failed to save agent configs: {str(e)}"}
+        return {"status": "error", "error": f"Failed to save agent configs: {e!s}"}
     return {"status": "ok", "agents": agent_model_configs}
 
 
@@ -920,7 +943,7 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
     test_key = req.api_key
     if not test_key and provider.value in provider_key_map:
         test_key = provider_key_map[provider.value].get("api_key")
-    
+
     # Get base_url from stored config if not provided
     test_base_url = base_url
     if not test_base_url and provider.value in provider_key_map:
@@ -929,7 +952,7 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
     # Validate base_url is provided
     if not test_base_url or test_base_url.strip() == "":
         return {"status": "error", "error": "Base URL is required. Please enter a valid API endpoint URL (e.g., https://api.groq.com for Groq)."}
-    
+
     # Normalize base_url - remove /openai/v1 or /v1 suffixes as providers add these
     test_base_url = test_base_url.rstrip('/')
     # Check longer suffix first to avoid incorrectly stripping /v1 from /openai/v1
@@ -942,13 +965,13 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
     # Validate the URL looks reasonable (has scheme and host)
     if not test_base_url.startswith('http://') and not test_base_url.startswith('https://'):
         return {"status": "error", "error": "Invalid URL format. Base URL must start with http:// or https://."}
-    
+
     if 'localhost' not in test_base_url and '.' not in test_base_url:
         return {"status": "error", "error": "Invalid URL. Expected format: https://api.provider.com or http://localhost:port"}
 
     config = ProviderConfig(provider=provider, base_url=test_base_url, api_key=test_key)
     provider_obj = ProviderRegistry.create_from_config(config)
-    
+
     # If no model specified, use provider-specific defaults
     test_model = req.model
     if not test_model or test_model.strip() == "":
@@ -966,10 +989,10 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
             ProviderType.LOCAL: "auto",
         }
         test_model = default_models.get(provider, "auto")
-    
+
     if not test_key:
         return {"status": "error", "error": "API key is required. Please enter your API key."}
-    
+
     try:
         messages = [LLMMessage(role=MessageRole.USER, content="Say 'OK' if you can hear me.")]
         response = await provider_obj.complete(messages, test_model, max_tokens=10)
@@ -977,7 +1000,7 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text
         if e.response.status_code == 401:
-            return {"status": "error", "error": f"Unauthorized (401) - Invalid API key or insufficient permissions. Please check your API key at the provider's keys page."}
+            return {"status": "error", "error": "Unauthorized (401) - Invalid API key or insufficient permissions. Please check your API key at the provider's keys page."}
         elif e.response.status_code == 404:
             # Try alternative models if default fails (only for 404, not for auth errors)
             alt_models = {
@@ -1010,7 +1033,7 @@ async def test_provider(provider: ProviderType, base_url: str, req: TestProvider
         # Handle DNS resolution errors like getaddrinfo failed
         if "getaddrinfo failed" in str(e) or "Name or service not known" in str(e):
             return {"status": "error", "error": f"Connection Error - Could not reach '{test_base_url}'. Check your internet connection and verify the URL is correct."}
-        return {"status": "error", "error": f"Connection Error: {str(e)}"}
+        return {"status": "error", "error": f"Connection Error: {e!s}"}
     except Exception as e:
         error_str = str(e)
         if "getaddrinfo failed" in error_str:
@@ -1381,7 +1404,7 @@ async def get_project_findings(project_id: str):
 class AgentTaskRequest(BaseModel):
     action: str
     input_data: dict | None = None  # Using dict without generics to avoid PEP 563 forward ref issues with Pydantic
-    
+
     def __init__(self, **data):
         super().__init__(**data)
         if self.input_data is None:
@@ -1400,10 +1423,10 @@ def _get_or_create_agent(project_id: str, agent_type: str):
     """Get or create a Phase 3 agent for a project."""
     if llm_router is None:
         raise RuntimeError("LLM router not initialized. Please configure a provider in Settings.")
-    
+
     if project_id not in phase3_agents:
         phase3_agents[project_id] = {}
-    
+
     agents = phase3_agents[project_id]
     if agent_type not in agents:
         # Create the appropriate agent
@@ -1423,7 +1446,7 @@ def _get_or_create_agent(project_id: str, agent_type: str):
             agents[agent_type] = DependencyAgent(message_bus, llm_router, project_id)
         elif agent_type == "debate":
             agents[agent_type] = DebateAgent(message_bus, llm_router, project_id)
-    
+
     return agents[agent_type]
 
 
@@ -1450,10 +1473,10 @@ async def run_recon_agent(project_id: str, req: AgentTaskRequest):
             input_data=agent_input,
         )
         result = await agent.execute_task(task)
-        
+
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Recon completed: {findings_count} findings", "completed", project_id, icon="🎯")
-        
+
         return {
             "status": "completed",
             "agent": "recon",
@@ -1463,7 +1486,7 @@ async def run_recon_agent(project_id: str, req: AgentTaskRequest):
     except Exception as e:
         await activity_bus.emit("agent", f"Recon agent failed: {str(e)[:100]}", "failed", project_id, icon="🎯")
         logger.error("recon_agent_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # --- Code Review ---
@@ -1489,10 +1512,10 @@ async def run_code_review_agent(project_id: str, req: AgentTaskRequest):
             input_data=agent_input,
         )
         result = await agent.execute_task(task)
-        
+
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Code Review completed: {findings_count} findings", "completed", project_id, icon="🔍")
-        
+
         return {
             "status": "completed",
             "agent": "code_review",
@@ -1503,7 +1526,7 @@ async def run_code_review_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Code Review failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔍", severity="error", source="code_review", category="code_review", duration_ms=_t1)
         logger.error("code_review_agent_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # --- Threat Modeling ---
@@ -1529,10 +1552,10 @@ async def run_threat_modeling_agent(project_id: str, req: AgentTaskRequest):
             input_data=agent_input,
         )
         result = await agent.execute_task(task)
-        
+
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Threat Modeling completed: {findings_count} findings", "completed", project_id, icon="🛡️")
-        
+
         return {
             "status": "completed",
             "agent": "threat_modeling",
@@ -1543,7 +1566,7 @@ async def run_threat_modeling_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Threat Modeling failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🛡️", severity="error", source="threat_modeling", category="threat_modeling", duration_ms=_t1)
         logger.error("threat_modeling_agent_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # --- Dependency Scanning ---
@@ -1569,10 +1592,10 @@ async def run_dependency_agent(project_id: str, req: AgentTaskRequest):
             input_data=agent_input,
         )
         result = await agent.execute_task(task)
-        
+
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Dependency scan completed: {findings_count} findings", "completed", project_id, icon="📦")
-        
+
         return {
             "status": "completed",
             "agent": "dependency",
@@ -1582,7 +1605,7 @@ async def run_dependency_agent(project_id: str, req: AgentTaskRequest):
     except Exception as e:
         await activity_bus.emit("agent", f"Dependency scan failed: {str(e)[:100]}", "failed", project_id, icon="📦")
         logger.error("dependency_agent_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # --- Debate Engine ---
@@ -1608,10 +1631,10 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
             input_data=agent_input,
         )
         result = await agent.execute_task(task)
-        
+
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", "Debate completed", "completed", project_id=project_id, icon="⚖️", severity="success", source="debate", category="debate", duration_ms=_t1)
-        
+
         return {
             "status": "completed",
             "agent": "debate",
@@ -1621,7 +1644,7 @@ async def run_debate_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Debate failed: {str(e)[:100]}", "failed", project_id=project_id, icon="⚖️", severity="error", source="debate", category="debate", duration_ms=_t1)
         logger.error("debate_agent_error", error=str(e), project_id=project_id)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # ============ Phase 5: Advanced Security Operations Endpoints ============
@@ -1630,10 +1653,10 @@ def _get_or_create_phase5_agent(project_id: str, agent_type: str):
     """Get or create a Phase 5 agent for a project."""
     if llm_router is None:
         raise RuntimeError("LLM router not initialized. Please configure a provider in Settings.")
-    
+
     if project_id not in phase5_agents:
         phase5_agents[project_id] = {}
-    
+
     agents = phase5_agents[project_id]
     if agent_type not in agents:
         if agent_type == "threat_intelligence":
@@ -1646,7 +1669,7 @@ def _get_or_create_phase5_agent(project_id: str, agent_type: str):
             agents[agent_type] = SupplyChainAgent(message_bus, llm_router, project_id)
         elif agent_type == "api_security":
             agents[agent_type] = APISecurityAgent(message_bus, llm_router, project_id)
-    
+
     return agents[agent_type]
 
 
@@ -1669,7 +1692,7 @@ async def run_threat_intelligence_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Threat Intelligence completed: {findings_count} findings", "completed", project_id, icon="🔍")
-        
+
         return {
             "status": "completed",
             "agent": "threat_intelligence",
@@ -1680,7 +1703,7 @@ async def run_threat_intelligence_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Threat Intelligence failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔍", severity="error", source="threat_intelligence", category="threat_intel", duration_ms=_t1)
         logger.error("threat_intelligence_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/agents/security-operations")
@@ -1702,7 +1725,7 @@ async def run_security_operations_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", "Security Operations completed", "completed", project_id=project_id, icon="🛡️", severity="success", source="security_operations", category="sec_ops", duration_ms=_t1)
-        
+
         return {
             "status": "completed",
             "agent": "security_operations",
@@ -1712,7 +1735,7 @@ async def run_security_operations_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Security Operations failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🛡️", severity="error", source="security_operations", category="sec_ops", duration_ms=_t1)
         logger.error("security_operations_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/agents/adaptive-defense")
@@ -1734,7 +1757,7 @@ async def run_adaptive_defense_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Adaptive Defense completed: {findings_count} findings", "completed", project_id, icon="⚡")
-        
+
         return {
             "status": "completed",
             "agent": "adaptive_defense",
@@ -1745,7 +1768,7 @@ async def run_adaptive_defense_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Adaptive Defense failed: {str(e)[:100]}", "failed", project_id=project_id, icon="⚡", severity="error", source="adaptive_defense", category="adaptive_defense", duration_ms=_t1)
         logger.error("adaptive_defense_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/agents/supply-chain")
@@ -1767,7 +1790,7 @@ async def run_supply_chain_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Supply Chain completed: {findings_count} findings", "completed", project_id, icon="📦")
-        
+
         return {
             "status": "completed",
             "agent": "supply_chain",
@@ -1778,7 +1801,7 @@ async def run_supply_chain_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"Supply Chain failed: {str(e)[:100]}", "failed", project_id=project_id, icon="📦", severity="error", source="supply_chain", category="supply_chain", duration_ms=_t1)
         logger.error("supply_chain_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/agents/api-security")
@@ -1800,7 +1823,7 @@ async def run_api_security_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"API Security completed: {findings_count} findings", "completed", project_id, icon="🔗")
-        
+
         return {
             "status": "completed",
             "agent": "api_security",
@@ -1811,7 +1834,7 @@ async def run_api_security_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", f"API Security failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔗", severity="error", source="api_security", category="api_security", duration_ms=_t1)
         logger.error("api_security_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # ============ Phase 4: Remediation & Compliance Endpoints ============
@@ -1831,11 +1854,11 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
         # Get or create remediation agent
         if project_id not in phase4_engines:
             phase4_engines[project_id] = {}
-        
+
         engines = phase4_engines[project_id]
         if "remediation" not in engines:
             engines["remediation"] = RemediationAgent(message_bus, llm_router, project_id)
-        
+
         agent = engines["remediation"]
         task = TaskPayload(
             task_id=str(uuid.uuid4()),
@@ -1845,7 +1868,7 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
         result = await agent.execute_task(task)
         findings_count = len(getattr(agent, 'findings', []))
         await activity_bus.emit("agent", f"Remediation completed: {findings_count} findings", "completed", project_id, icon="🔧")
-        
+
         return {
             "status": "completed",
             "agent": "remediation",
@@ -1856,7 +1879,7 @@ async def run_remediation_agent(project_id: str, req: AgentTaskRequest):
         _t1 = (time.time() - _t0) * 1000
         await emit_rich_event("agent", "Remediation failed: {str(e)[:100]}", "failed", project_id=project_id, icon="🔧", severity="error", source="remediation", category="remediation", duration_ms=_t1)
         logger.error("remediation_agent_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {e!s}")
 
 
 # --- Report Generator ---
@@ -1885,30 +1908,30 @@ async def generate_executive_report(project_id: str):
         # Initialize report generator
         if project_id not in phase4_engines:
             phase4_engines[project_id] = {}
-        
+
         if "report_generator" not in phase4_engines[project_id]:
             phase4_engines[project_id]["report_generator"] = ReportGenerator(project_id, llm_router)
-        
+
         report_gen = phase4_engines[project_id]["report_generator"]
-        
+
         # Get findings from project
         findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
-        
+
         # Generate metrics from project data
         metrics = {
             "scan_timestamp": getattr(project, 'created_at', None),
             "total_files_analyzed": len(getattr(project, 'analyzed_files', [])),
         }
-        
+
         report = await report_gen.generate_executive_summary(findings, metrics)
-        
+
         return {
             "status": "completed",
             "report": report,
         }
     except Exception as e:
         logger.error("executive_report_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Report generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Report generation error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/reports/compliance")
@@ -1922,17 +1945,17 @@ async def generate_compliance_report(project_id: str, frameworks: list[str] = ["
         # Initialize compliance engine
         if project_id not in phase4_engines:
             phase4_engines[project_id] = {}
-        
+
         if "compliance" not in phase4_engines[project_id]:
             phase4_engines[project_id]["compliance"] = ComplianceEngine(project_id)
-        
+
         compliance_eng = phase4_engines[project_id]["compliance"]
-        
+
         # Get findings from project
         findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
-        
+
         report = await compliance_eng.assess_compliance(findings)
-        
+
         return {
             "status": "completed",
             "report": report,
@@ -1940,7 +1963,7 @@ async def generate_compliance_report(project_id: str, frameworks: list[str] = ["
         }
     except Exception as e:
         logger.error("compliance_report_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Compliance report error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Compliance report error: {e!s}")
 
 
 @app.post("/api/projects/{project_id}/reports/control-mapping")
@@ -1954,24 +1977,24 @@ async def generate_control_mapping(project_id: str, framework: str = "OWASP Top 
         # Initialize compliance engine
         if project_id not in phase4_engines:
             phase4_engines[project_id] = {}
-        
+
         if "compliance" not in phase4_engines[project_id]:
             phase4_engines[project_id]["compliance"] = ComplianceEngine(project_id)
-        
+
         compliance_eng = phase4_engines[project_id]["compliance"]
-        
+
         # Get findings from project
         findings = [Finding(**f) if isinstance(f, dict) else f for f in project.findings]
-        
+
         mapping = await compliance_eng.generate_control_mapping(findings, framework)
-        
+
         return {
             "status": "completed",
             "mapping": mapping,
         }
     except Exception as e:
         logger.error("control_mapping_error", error=str(e), project_id=project_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Control mapping error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Control mapping error: {e!s}")
 
 
 @app.get("/api/projects/{project_id}/compliance/frameworks")
@@ -2007,7 +2030,7 @@ class AutoSelectRequest(BaseModel):
 async def get_agent_recommendation(req: AutoSelectRequest):
     """Get the best agent recommendation for a vulnerability type."""
     vuln_type = req.vulnerability_type.lower().replace(" ", "_").replace("-", "_")
-    
+
     if vuln_type not in VULN_TO_AGENTS:
         # Try to find a close match
         available = list(VULN_TO_AGENTS.keys())
@@ -2016,15 +2039,15 @@ async def get_agent_recommendation(req: AutoSelectRequest):
             "message": f"Unknown vulnerability type: {req.vulnerability_type}",
             "available_types": available,
         }
-    
+
     mapping = VULN_TO_AGENTS[vuln_type]
     primary_agent_info = AGENT_INFO.get(mapping["primary"], {})
-    
+
     secondary_agents_info = []
     for sec_agent in mapping.get("secondary", []):
         if sec_agent in AGENT_INFO:
             secondary_agents_info.append(AGENT_INFO[sec_agent])
-    
+
     return {
         "status": "success",
         "vulnerability_type": vuln_type,
@@ -2053,7 +2076,7 @@ class DetectAndRecommendRequest(BaseModel):
 async def detect_vulnerability_and_recommend(req: DetectAndRecommendRequest):
     """Given detected indicators, recommend the best agent and suggest next steps."""
     indicators = [ind.lower() for ind in req.indicators]
-    
+
     # Match indicators to vulnerability types
     matched_vulns = []
     for vuln_type, mapping in VULN_TO_AGENTS.items():
@@ -2066,11 +2089,11 @@ async def detect_vulnerability_and_recommend(req: DetectAndRecommendRequest):
                 "matched_indicators": list(matches),
                 "severity": mapping.get("severity", "high"),
             })
-    
+
     # Sort by match count and severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     matched_vulns.sort(key=lambda x: (-x["match_count"], severity_order.get(x["severity"], 99)))
-    
+
     if not matched_vulns:
         return {
             "status": "no_match",
@@ -2078,13 +2101,13 @@ async def detect_vulnerability_and_recommend(req: DetectAndRecommendRequest):
             "indicators": indicators,
             "suggestion": "Consider running a general API security scan or threat intelligence gathering",
         }
-    
+
     # Get recommendation for top match
     top_vuln = matched_vulns[0]
     vuln_type = top_vuln["vuln_type"]
     mapping = VULN_TO_AGENTS[vuln_type]
     primary_agent_info = AGENT_INFO.get(mapping["primary"], {})
-    
+
     return {
         "status": "success",
         "detected_vulnerability": vuln_type,
@@ -2108,29 +2131,29 @@ async def detect_vulnerability_and_recommend(req: DetectAndRecommendRequest):
 async def run_recommended_agent(req: AutoSelectRequest):
     """Run the recommended agent for a vulnerability type."""
     vuln_type = req.vulnerability_type.lower().replace(" ", "_").replace("-", "_")
-    
+
     if vuln_type not in VULN_TO_AGENTS:
         return {
             "status": "error",
             "message": f"Unknown vulnerability type: {req.vulnerability_type}",
         }
-    
+
     mapping = VULN_TO_AGENTS[vuln_type]
     recommended_agent = mapping["primary"]
-    
+
     if not req.project_id:
         return {
             "status": "error",
             "message": "project_id is required to run an agent",
         }
-    
+
     project = memory_engine.load_project(req.project_id)
     if project is None:
         return {
             "status": "error",
             "message": f"Project not found: {req.project_id}",
         }
-    
+
     try:
         # Map agent type to API endpoint path
         agent_endpoint_map = {
@@ -2140,14 +2163,14 @@ async def run_recommended_agent(req: AutoSelectRequest):
             "adaptive_defense": "adaptive-defense",
             "supply_chain": "supply-chain",
         }
-        
+
         endpoint = agent_endpoint_map.get(recommended_agent)
         if not endpoint:
             return {
                 "status": "error",
                 "message": f"No endpoint mapped for agent: {recommended_agent}",
             }
-        
+
         # Prepare input data with vulnerability-specific context
         input_data = {
             "scope": req.context or {},
@@ -2155,7 +2178,7 @@ async def run_recommended_agent(req: AutoSelectRequest):
             "recommended_payloads": mapping.get("payloads", [])[:5],
             "indicators": mapping.get("indicators", []),
         }
-        
+
         return {
             "status": "prepared",
             "agent": recommended_agent,
@@ -2188,16 +2211,16 @@ class BurpHistoryRequest(BaseModel):
 async def burp_connect(req: BurpConnectRequest):
     """Test connection to Burp Suite REST API."""
     import httpx
-    
+
     try:
         headers = {}
         if req.api_key:
             headers["Authorization"] = f"Bearer {req.api_key}"
-        
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             test_url = f"{req.proxy_url.rstrip('/')}/v0.1/scan"
             response = await client.get(test_url, headers=headers)
-            
+
             if response.status_code == 200:
                 return {"status": "ok", "message": "Connected to Burp Suite Professional successfully", "version": response.text.strip('"'), "edition": "professional"}
             elif response.status_code == 401:
@@ -2222,23 +2245,23 @@ async def burp_connect(req: BurpConnectRequest):
 async def burp_history(req: BurpHistoryRequest):
     """Fetch HTTP proxy history from Burp Suite."""
     import requests
-    from urllib3.util.retry import Retry
     from requests.adapters import HTTPAdapter
-    
+    from urllib3.util.retry import Retry
+
     headers = {"Accept": "application/json"}
     if req.api_key:
         headers["Authorization"] = f"Bearer {req.api_key}"
-    
+
     session = requests.Session()
     retries = Retry(total=2, backoff_factor=0.5)
     session.mount("http://", HTTPAdapter(max_retries=retries))
     session.mount("https://", HTTPAdapter(max_retries=retries))
-    
+
     try:
         history_url = f"{req.proxy_url.rstrip('/')}/v0.1/proxy/history"
         params = {"limit": req.limit}
         response = session.get(history_url, headers=headers, params=params, timeout=10)
-        
+
         if response.status_code == 200:
             try:
                 history = response.json()
@@ -2259,34 +2282,34 @@ async def burp_history(req: BurpHistoryRequest):
 async def burp_scan(req: BurpHistoryRequest):
     """Analyze Burp Suite history and create findings for AI analysis."""
     import requests
-    
+
     headers = {"Accept": "application/json"}
     if req.api_key:
         headers["Authorization"] = f"Bearer {req.api_key}"
-    
+
     try:
         history_url = f"{req.proxy_url.rstrip('/')}/v0.1/proxy/history"
         params = {"limit": req.limit}
         response = requests.get(history_url, headers=headers, params=params, timeout=10)
-        
+
         if response.status_code != 200:
             return {"status": "error", "error": f"Failed to fetch history: HTTP {response.status_code}"}
-        
+
         history = response.json() if response.headers.get("content-type", "").startswith("application/json") else []
-        
+
         findings = []
         for item in (history if isinstance(history, list) else []):
             url = item.get("url", "")
             method = item.get("method", "GET")
             response_code = item.get("responseCode", 0)
-            
+
             if response_code >= 400:
                 findings.append({"type": "error_response", "url": url, "method": method, "code": response_code})
             if "/api/" in url.lower() or "/rest/" in url.lower():
                 findings.append({"type": "api_endpoint", "url": url, "method": method})
             if "authorization" in str(item.get("request", {})).lower() or "bearer" in str(item.get("request", {})).lower():
                 findings.append({"type": "auth_header_found", "url": url, "method": method})
-        
+
         return {
             "status": "ok",
             "scan_summary": {
@@ -2313,14 +2336,14 @@ async def process_urls(req: URLsInputRequest):
     """Process URLs for web vulnerability analysis."""
     import httpx
     from bs4 import BeautifulSoup
-    
+
     await emit_rich_event("analysis", f"Analyzing {len(req.urls)} URLs...", "processing", project_id=req.project_id, icon="🌐", severity="info", source="url_analyzer", category="web_analysis")
     results = []
     for url in req.urls[:10]:
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
                 response = await client.get(url)
-                
+
                 soup = BeautifulSoup(response.text, 'html.parser')
                 links = [a.get('href', '') for a in soup.find_all('a', href=True)][:20]
                 forms = []
@@ -2328,11 +2351,11 @@ async def process_urls(req: URLsInputRequest):
                     form_data = {
                         "action": form.get('action', ''),
                         "method": form.get('method', 'get').upper(),
-                        "inputs": [{"name": inp.get('name', ''), "type": inp.get('type', 'text'), "id": inp.get('id', '')} 
+                        "inputs": [{"name": inp.get('name', ''), "type": inp.get('type', 'text'), "id": inp.get('id', '')}
                                    for inp in form.find_all('input')[:10]]
                     }
                     forms.append(form_data)
-                
+
                 results.append({
                     "url": url,
                     "status": response.status_code,
@@ -2344,7 +2367,7 @@ async def process_urls(req: URLsInputRequest):
                 })
         except Exception as e:
             results.append({"url": url, "error": str(e)})
-    
+
     return {
         "status": "ok",
         "results": results,
@@ -2362,24 +2385,24 @@ def detect_technologies(headers: dict, html: str) -> dict:
         tech["web_server"] = "apache"
     elif "iis" in server:
         tech["web_server"] = "IIS"
-    
+
     if "x-powered-by" in headers:
         tech["backend"] = headers["x-powered-by"]
-    
+
     if "wordpress" in html.lower():
         tech["cms"] = "WordPress"
     elif "drupal" in html.lower():
         tech["cms"] = "Drupal"
     elif "joomla" in html.lower():
         tech["cms"] = "Joomla"
-    
+
     if "react" in html.lower() or "create-react-app" in html.lower():
         tech["frontend"] = "React"
     elif "vue" in html.lower() or "vue.js" in html.lower():
         tech["frontend"] = "Vue.js"
     elif "angular" in html.lower():
         tech["frontend"] = "Angular"
-    
+
     return tech
 
 
@@ -2392,23 +2415,22 @@ class FolderScanRequest(BaseModel):
 @app.post("/api/input/folder")
 async def scan_folder(req: FolderScanRequest):
     """Scan a folder for source code files."""
-    import os
-    
+
     supported_extensions = req.file_types or [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php", ".sql", ".cs", ".c", ".cpp", ".h", ".hpp"]
-    
+
     await emit_rich_event("analysis", f"Scanning folder: {req.folder_path}", "processing", project_id=req.project_id, icon="📁", severity="info", source="folder_scanner", category="file_analysis")
     if not os.path.exists(req.folder_path):
         return {"status": "error", "error": f"Folder not found: {req.folder_path}"}
-    
+
     if not os.path.isdir(req.folder_path):
         return {"status": "error", "error": f"Path is not a directory: {req.folder_path}"}
-    
+
     files_found = []
     total_size = 0
-    
+
     for root, dirs, files in os.walk(req.folder_path):
         dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build', '.idea']]
-        
+
         for filename in files:
             ext = os.path.splitext(filename)[1].lower()
             if ext in supported_extensions:
@@ -2425,9 +2447,9 @@ async def scan_folder(req: FolderScanRequest):
                     })
                 except Exception:
                     pass
-    
+
     files_found.sort(key=lambda x: x["size_bytes"], reverse=True)
-    
+
     return {
         "status": "ok",
         "folder": req.folder_path,
@@ -2449,24 +2471,24 @@ async def process_prompt(req: PromptsInputRequest):
     """Process security testing prompts through AI."""
     if llm_router is None:
         return {"status": "error", "error": "LLM router not initialized. Please configure a provider in Settings."}
-    
+
     from .providers import LLMMessage, MessageRole
-    
+
     try:
         await emit_rich_event("analysis", "Processing security analysis prompt...", "processing", project_id=req.project_id, icon="💭", severity="info", source="prompt_processor", category="llm_analysis")
         system_context = "You are SENTINEL-X, an autonomous security analysis assistant. Provide concise, actionable security guidance."
-        
+
         messages = [
             LLMMessage(role=MessageRole.SYSTEM, content=system_context),
             LLMMessage(role=MessageRole.USER, content=req.prompt),
         ]
-        
+
         if req.context:
             context_str = f"\nContext: {json.dumps(req.context)}"
             messages[1] = LLMMessage(role=MessageRole.USER, content=req.prompt + context_str)
-        
+
         response = await llm_router.complete(messages, max_tokens=2000)
-        
+
         return {
             "status": "ok",
             "response": response.content,
@@ -2481,15 +2503,15 @@ async def process_prompt(req: PromptsInputRequest):
 async def analyze_input_code(req: CodeAnalysisRequest):
     """Analyze code submitted through input sources."""
     project_id = req.file_path.split("/")[0] if "/" in req.file_path else "default"
-    
+
     if project_id not in code_analyzers:
         code_analyzers[project_id] = CodeAnalyzer(project_id)
-    
+
     analyzer = code_analyzers[project_id]
     patterns = analyzer.analyze_file(req.file_path, req.code, req.language)
     data_flows = analyzer.analyze_data_flow(req.file_path, req.code)
     auth_flows = [analyzer.analyze_auth_flow(req.file_path, req.code)]
-    
+
     return {
         "status": "ok",
         "file_path": req.file_path,
@@ -2507,7 +2529,12 @@ async def analyze_input_code(req: CodeAnalysisRequest):
 
 # ============ BUG BOUNTY PROGRAM INTEGRATION ============
 
-from .project_context import ProjectContext, BugBountyProgram, get_owasp_top10_prompt, get_bug_bounty_context_prompt
+from .project_context import (
+    BugBountyProgram,
+    ProjectContext,
+    get_bug_bounty_context_prompt,
+    get_owasp_top10_prompt,
+)
 
 # Initialize project context
 project_context = ProjectContext(settings.storage.base_path / "context")
@@ -2524,7 +2551,7 @@ async def save_bug_bounty_program(project_id: str, req: BugBountyProgramRequest)
     project = memory_engine.load_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     try:
         # Create program info from URL
         program = BugBountyProgram(
@@ -2533,7 +2560,7 @@ async def save_bug_bounty_program(project_id: str, req: BugBountyProgramRequest)
             in_scope=[],
             out_of_scope=[]
         )
-        
+
         # Fetch program info from the platform
         import httpx
         if req.platform.lower() == "hackerone" and "hackerone.com" in req.program_url:
@@ -2547,10 +2574,10 @@ async def save_bug_bounty_program(project_id: str, req: BugBountyProgramRequest)
                         # This would need authentication for full access
                     except Exception:
                         pass
-        
+
         # Save to project context
         project_context.save_bug_bounty_program(project_id, program)
-        
+
         return {
             "status": "ok",
             "message": f"Bug bounty program saved: {req.platform}",
@@ -2575,10 +2602,10 @@ async def get_owasp_context(project_id: str):
     """Get OWASP Top 10 knowledge for agents"""
     program = project_context.get_bug_bounty_program(project_id)
     context_prompt = get_owasp_top10_prompt()
-    
+
     if program:
         context_prompt += "\n\n" + get_bug_bounty_context_prompt(program)
-    
+
     return {
         "owasp_knowledge": context_prompt,
         "has_program": program is not None
@@ -2597,14 +2624,13 @@ async def get_agent_memory(project_id: str, agent_type: str):
 @app.post("/api/projects/{project_id}/agent-memory/{agent_type}")
 async def save_agent_memory(project_id: str, agent_type: str, req: dict):
     """Save agent's memory (model, successful payloads, etc.)"""
-    from .project_context import AgentMemory
-    
+
     if "model" in req:
         project_context.update_agent_model(project_id, agent_type, req["model"])
-    
+
     if "successful_payload" in req:
         project_context.add_successful_payload(project_id, agent_type, req["successful_payload"])
-    
+
     return {"status": "ok", "agent_type": agent_type, "project_id": project_id}
 
 
@@ -2619,7 +2645,7 @@ async def get_all_project_agent_models(project_id: str):
 async def start_burp_proxy(req: dict):
     """
     Start Burp Suite Community Edition proxy mode.
-    
+
     This endpoint configures SENTINEL-X to act as an upstream proxy to Burp Suite,
     allowing the AI to read and analyze traffic in real-time.
     """
@@ -2627,7 +2653,7 @@ async def start_burp_proxy(req: dict):
     proxy_port = req.get("proxy_port", 8080)
     burp_host = req.get("burp_host", "localhost")
     burp_port = req.get("burp_port", 8080)
-    
+
     return {
         "status": "ok",
         "mode": "community_proxy",
@@ -2651,7 +2677,7 @@ async def get_burp_proxy_status():
 class BurpProxyRequest(BaseModel):
     target_url: str
     method: str = "GET"
-    headers: Dict[str, str] | None = None
+    headers: dict[str, str] | None = None
     body: str | None = None
     upstream_proxy: str = "http://localhost:8080"
 
@@ -2660,29 +2686,30 @@ class BurpProxyRequest(BaseModel):
 async def burp_proxy_request(req: BurpProxyRequest):
     """Forward request through Burp Suite proxy for analysis."""
     from .burp_proxy import BurpProxyAnalyzer
-    
+
     analyzer = BurpProxyAnalyzer(upstream_proxy=req.upstream_proxy)
     headers = req.headers or {}
-    
+
     result = await analyzer.analyze_request(
         method=req.method,
         url=req.target_url,
         headers=headers,
         body=req.body
     )
-    
+
     return {"status": "ok", "analysis": result}
 
 
 @app.post("/api/burp/proxy-analyze")
 async def burp_proxy_analyze(req: BurpProxyRequest):
     """Analyze a request/response pair through Burp Suite proxy."""
-    from .burp_proxy import BurpProxyAnalyzer
     import httpx
-    
+
+    from .burp_proxy import BurpProxyAnalyzer
+
     analyzer = BurpProxyAnalyzer(upstream_proxy=req.upstream_proxy)
     headers = req.headers or {}
-    
+
     # Analyze request (always succeeds - local analysis)
     request_analysis = await analyzer.analyze_request(
         method=req.method,
@@ -2690,7 +2717,7 @@ async def burp_proxy_analyze(req: BurpProxyRequest):
         headers=headers,
         body=req.body
     )
-    
+
     # Try to get response - if Burp Suite isn't running, just return analysis without response
     response_analysis = None
     try:
@@ -2714,7 +2741,7 @@ async def burp_proxy_analyze(req: BurpProxyRequest):
         response_analysis = {"error": f"Could not connect to {req.target_url} - check if target is running"}
     except Exception as e:
         response_analysis = {"error": str(e)}
-    
+
     return {
         "status": "ok",
         "request_analysis": request_analysis,
@@ -2727,7 +2754,7 @@ async def burp_proxy_analyze(req: BurpProxyRequest):
 async def get_burp_proxy_summary(upstream_proxy: str = "http://localhost:8080"):
     """Get summary of all proxied requests."""
     from .burp_proxy import BurpProxyAnalyzer
-    
+
     analyzer = BurpProxyAnalyzer(upstream_proxy=upstream_proxy)
     return analyzer.get_summary()
 
@@ -2861,7 +2888,8 @@ async def export_events(format: str = "json"):
     """Export all execution events as JSON or CSV."""
     events, _ = event_store.get_events(limit=10000)
     if format == "csv":
-        import io, csv
+        import csv
+        import io
         output = io.StringIO()
         if events:
             writer = csv.DictWriter(output, fieldnames=list(events[0].keys()))
@@ -2908,19 +2936,20 @@ async def run_bug_bounty_scan(req: BugBountyScanRequest):
     This provides a cleaner 'Scan' button experience in the UI.
     """
     from .bug_bounty import BugBountyOrchestrator
-    
+
     effective_url = req.target_domain
     if not effective_url.startswith("http"):
         effective_url = f"https://{effective_url}"
-    
+
     # Create a fresh orchestrator per request
     orch = BugBountyOrchestrator()
-    
+
     _scan_t0 = time.time()
     await emit_rich_event("scan", f"Starting Bug Bounty scan on: {req.target_domain}", "starting", project_id=req.project_id or "", icon="🚀", severity="info", source="bug_bounty_scanner", category="bug_bounty")
     try:
         # If project_id is provided, load files from the project folder
-        
+        folder_files: dict[str, str] = {}
+
         # Also scan project folder on disk if available
         if req.project_id:
             project = memory_engine.load_project(req.project_id)
@@ -2938,7 +2967,7 @@ async def run_bug_bounty_scan(req: BugBountyScanRequest):
                                 except Exception:
                                     pass
                     await emit_rich_event("scan", f"Loaded {len(folder_files)} files from project folder", "running", project_id=req.project_id, icon="📁", severity="info", source="folder_scanner", category="bug_bounty")
-        
+
         result = await orch.run_pipeline(
             target_url=effective_url,
             target_domain=req.target_domain,
@@ -2946,14 +2975,89 @@ async def run_bug_bounty_scan(req: BugBountyScanRequest):
             project_id=req.project_id,
             folder_files=folder_files if folder_files else None,
         )
-        
+
         # Get unique reports count
         reports = getattr(result, 'reports', []) or getattr(result, 'findings', [])
         file_findings = getattr(result, 'file_findings', []) or []
         total_findings = len(reports) + len(file_findings)
         _scan_t1 = (time.time() - _scan_t0) * 1000
+
+        # Save findings to project so they appear in the Findings tab
+        if req.project_id and total_findings > 0:
+            try:
+                save_project = memory_engine.load_project(req.project_id)
+                if save_project is not None:
+                    existing_sigs = set()
+                    for existing in getattr(save_project, 'findings', []) or []:
+                        e_title = existing.get('title', '') if isinstance(existing, dict) else getattr(existing, 'title', '')
+                        e_target = existing.get('target', '') if isinstance(existing, dict) else getattr(existing, 'target', '')
+                        existing_sigs.add((e_title.lower(), e_target.lower()))
+                    new_count = 0
+                    for r in reports:
+                        title = getattr(r, 'title', '') if not isinstance(r, dict) else r.get('title', '')
+                        target = getattr(r, 'target', '') if not isinstance(r, dict) else r.get('target', '')
+                        sig = (title.lower(), target.lower())
+                        if sig not in existing_sigs:
+                            existing_sigs.add(sig)
+                            finding_entry = {
+                                'title': title,
+                                'target': target or req.target_domain,
+                                'description': getattr(r, 'description', '') if not isinstance(r, dict) else r.get('description', ''),
+                                'severity': getattr(r, 'severity', 'MEDIUM') if not isinstance(r, dict) else r.get('severity', 'MEDIUM'),
+                                'source': 'bug_bounty',
+                                'type': getattr(r, 'vulnerability_type', '') if not isinstance(r, dict) else r.get('vulnerability_type', ''),
+                                'cvss': getattr(r, 'cvss_score', '') if not isinstance(r, dict) else r.get('cvss_score', ''),
+                                'evidence': getattr(r, 'evidence', '') if not isinstance(r, dict) else r.get('evidence', ''),
+                            }
+                            if not hasattr(save_project, 'findings') or save_project.findings is None:
+                                save_project.findings = []
+                            save_project.findings.append(finding_entry)
+                            new_count += 1
+                    for ff in file_findings:
+                        if isinstance(ff, dict):
+                            fsig = (ff.get('title', '').lower(), ff.get('file', '').lower())
+                        else:
+                            fsig = (getattr(ff, 'title', '').lower(), getattr(ff, 'file', '').lower())
+                        if fsig not in existing_sigs:
+                            existing_sigs.add(fsig)
+                            if isinstance(ff, dict):
+                                ff_saved = dict(ff)
+                            else:
+                                ff_saved = {k: getattr(ff, k, '') for k in ['title', 'severity', 'type', 'file', 'line', 'description', 'evidence']}
+                            ff_saved['source'] = 'bug_bounty'
+                            if not hasattr(save_project, 'findings') or save_project.findings is None:
+                                save_project.findings = []
+                            save_project.findings.append(ff_saved)
+                            new_count += 1
+                    if new_count > 0:
+                        memory_engine.save_project(save_project)
+                        logger.info("bug_bounty_findings_saved", project_id=req.project_id, count=new_count)
+            except Exception as save_err:
+                logger.warning("bug_bounty_findings_save_failed", error=str(save_err)[:100])
+
+        # Save the bug bounty report text so the AI Report tab can load it
+        if req.project_id and reports:
+            try:
+                save_project = memory_engine.load_project(req.project_id)
+                if save_project is not None:
+                    report_texts = []
+                    for r in reports:
+                        rt = getattr(r, 'report_text', '') if not isinstance(r, dict) else r.get('report_text', '')
+                        if rt:
+                            report_texts.append(rt)
+                    if report_texts:
+                        combined = '\n\n---\n\n'.join(report_texts)
+                        if not hasattr(save_project, 'bug_bounty_report') or save_project.bug_bounty_report is None:
+                            save_project.bug_bounty_report = combined
+                        else:
+                            save_project.bug_bounty_report += '\n\n---\n\n' + combined
+                        memory_engine.save_project(save_project)
+                        logger.info("bug_bounty_report_saved", project_id=req.project_id, reports=len(report_texts))
+            except Exception as save_err:
+                logger.warning("bug_bounty_report_save_failed", error=str(save_err)[:100])
+
         await emit_rich_event("scan", f"Bug Bounty scan completed: {total_findings} total findings", "completed", project_id=req.project_id or "", icon="🚀", severity="success", source="bug_bounty_scanner", category="bug_bounty", duration_ms=_scan_t1)
-        
+
         return {
             "status": "completed",
             "findings_count": total_findings,
@@ -2990,33 +3094,33 @@ async def upload_burp_export(req: BurpUploadRequest):
         burp_data = req.burp_data or []
         if isinstance(burp_data, dict):
             burp_data = [burp_data]
-        
+
         findings = []
         total_requests = len(burp_data)
         api_endpoints = 0
         auth_headers_found = 0
         error_responses = 0
-        
+
         for item in burp_data:
             url = item.get("url", "") if isinstance(item, dict) else ""
             method = item.get("method", "GET") if isinstance(item, dict) else ""
             status = item.get("status", item.get("responseCode", 0)) if isinstance(item, dict) else 0
-            
+
             if "/api/" in url.lower() or "/rest/" in url.lower():
                 api_endpoints += 1
                 findings.append({"type": "api_endpoint", "url": url, "method": method})
-            
+
             if isinstance(status, int) and status >= 400:
                 error_responses += 1
                 findings.append({"type": "error_response", "url": url, "method": method, "code": status})
-            
+
             request_data = item.get("request", {}) if isinstance(item, dict) else {}
             if isinstance(request_data, dict):
                 headers_str = str(request_data.get("headers", ""))
                 if "authorization" in headers_str.lower() or "bearer" in headers_str.lower():
                     auth_headers_found += 1
                     findings.append({"type": "auth_header", "url": url, "method": method})
-        
+
         return {
             "status": "ok",
             "summary": {
@@ -3032,34 +3136,6 @@ async def upload_burp_export(req: BurpUploadRequest):
     except Exception as e:
         logger.error("burp_upload_error", error=str(e))
         return {"status": "error", "error": str(e)}
-
-
-@app.post("/api/input/code")
-async def analyze_input_code(req: CodeAnalysisRequest):
-    """Analyze code submitted through input sources."""
-    project_id = req.file_path.split("/")[0] if "/" in req.file_path else "default"
-    
-    if project_id not in code_analyzers:
-        code_analyzers[project_id] = CodeAnalyzer(project_id)
-    
-    analyzer = code_analyzers[project_id]
-    patterns = analyzer.analyze_file(req.file_path, req.code, req.language)
-    data_flows = analyzer.analyze_data_flow(req.file_path, req.code)
-    auth_flows = [analyzer.analyze_auth_flow(req.file_path, req.code)]
-    
-    return {
-        "status": "ok",
-        "file_path": req.file_path,
-        "patterns": [p.to_dict() for p in patterns],
-        "data_flows": [f.to_dict() for f in data_flows],
-        "summary": {
-            "patterns_found": len(patterns),
-            "critical": len([p for p in patterns if p.severity.value == "CRITICAL"]),
-            "high": len([p for p in patterns if p.severity.value == "HIGH"]),
-            "data_flows": len(data_flows),
-            "unsafe_flows": len([f for f in data_flows if not f.is_safe]),
-        },
-    }
 
 @app.get("/api/projects/{project_id}/agents")
 async def list_agents(project_id: str):
@@ -3177,7 +3253,7 @@ class ToolRunRequest(BaseModel):
     tool_name: str
     target: str
     mode: str | None = None
-    parameters: Dict[str, Any] | None = None
+    parameters: dict[str, Any] | None = None
 
 
 class GobusterScanRequest(BaseModel):
@@ -3190,18 +3266,18 @@ class GobusterScanRequest(BaseModel):
     user_agent: str | None = None
     timeout: int = 10
     skip_ssl_verify: bool = False
-    headers: Dict[str, str] | None = None
+    headers: dict[str, str] | None = None
 
 
 @app.get("/api/tools/list")
 async def list_tools():
     """List all available external security tools."""
+    from .ffuf_tool import get_ffuf_tool
     from .gobuster_tool import get_gobuster_tool
     from .nmap_tool import get_nmap_tool
-    from .ffuf_tool import get_ffuf_tool
-    
+
     tools = []
-    
+
     # Gobuster
     gobuster = get_gobuster_tool()
     tools.append({
@@ -3211,7 +3287,7 @@ async def list_tools():
         "installed": gobuster.is_available(),
         "version": gobuster.get_version() if gobuster.is_available() else "unknown"
     })
-    
+
     # Nmap
     nmap = get_nmap_tool()
     tools.append({
@@ -3221,7 +3297,7 @@ async def list_tools():
         "installed": nmap.is_available(),
         "version": nmap.get_version() if nmap.is_available() else "unknown"
     })
-    
+
     # FFUF
     ffuf = get_ffuf_tool()
     tools.append({
@@ -3231,7 +3307,7 @@ async def list_tools():
         "installed": ffuf.is_available(),
         "version": ffuf.get_version() if ffuf.is_available() else "unknown"
     })
-    
+
     return {
         "tools": tools,
         "total": len(tools)
@@ -3241,18 +3317,18 @@ async def list_tools():
 @app.post("/api/tools/gobuster/scan")
 async def run_gobuster_scan(req: GobusterScanRequest):
     """Run a gobuster scan."""
-    from .gobuster_tool import GobusterTool, GobusterResult, get_gobuster_tool
-    import asyncio
-    
+
+    from .gobuster_tool import get_gobuster_tool
+
     await activity_bus.emit("tool", "Starting Gobuster scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="gobuster")
     scanner = get_gobuster_tool()
-    
+
     if not scanner.is_available():
         return {
             "status": "error",
             "error": "Gobuster is not installed. Install from: https://github.com/OJ/gobuster/releases"
         }
-    
+
     try:
         result = await scanner.scan(
             target=req.target,
@@ -3266,7 +3342,7 @@ async def run_gobuster_scan(req: GobusterScanRequest):
             headers=req.headers
         )
         await activity_bus.emit("tool", "Gobuster scan completed: " + str(len(getattr(result, 'results', []) or [])) + " results", "completed", project_id=None, icon="\U0001f50d", tool_name="gobuster")
-        
+
         return {
             "status": "ok",
             "tool": "gobuster",
@@ -3294,7 +3370,7 @@ async def run_gobuster_scan(req: GobusterScanRequest):
 async def gobuster_status():
     """Check gobuster installation status."""
     from .gobuster_tool import get_gobuster_tool
-    
+
     scanner = get_gobuster_tool()
     return {
         "installed": scanner.is_available(),
@@ -3323,7 +3399,7 @@ class NmapScanRequest(BaseModel):
 async def nmap_status():
     """Check nmap installation status."""
     from .nmap_tool import get_nmap_tool
-    
+
     scanner = get_nmap_tool()
     return {
         "installed": scanner.is_available(),
@@ -3336,17 +3412,17 @@ async def nmap_status():
 async def run_nmap_scan(req: NmapScanRequest):
     """Run an nmap scan."""
     from .nmap_tool import get_nmap_tool
-    
+
     await activity_bus.emit("tool", "Starting Nmap scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="nmap")
     scanner = get_nmap_tool()
-    
+
     if not scanner.is_available():
         return {
             "status": "error",
             "error": "Nmap is not installed or not in PATH",
             "suggestion": "Install from: https://nmap.org/download.html"
         }
-    
+
     try:
         result = await scanner.scan(
             target=req.target,
@@ -3359,7 +3435,7 @@ async def run_nmap_scan(req: NmapScanRequest):
             service_detection=req.service_detection
         )
         await activity_bus.emit("tool", "Nmap scan completed", "completed", project_id=None, icon="\U0001f50d", tool_name="nmap")
-        
+
         return {
             "status": "ok",
             "tool": "nmap",
@@ -3399,7 +3475,7 @@ class FfufScanRequest(BaseModel):
 async def ffuf_status():
     """Check ffuf installation status."""
     from .ffuf_tool import get_ffuf_tool
-    
+
     scanner = get_ffuf_tool()
     return {
         "installed": scanner.is_available(),
@@ -3412,17 +3488,17 @@ async def ffuf_status():
 async def run_ffuf_scan(req: FfufScanRequest):
     """Run an ffuf web fuzzing scan."""
     from .ffuf_tool import get_ffuf_tool
-    
+
     await activity_bus.emit("tool", "Starting FFUF scan on: " + str(req.target), "running", project_id=None, icon="🔍", tool_name="ffuf")
     scanner = get_ffuf_tool()
-    
+
     if not scanner.is_available():
         return {
             "status": "error",
             "error": "FFUF is not installed or not in PATH",
             "suggestion": "Install from: https://github.com/ffuf/ffuf/releases"
         }
-    
+
     try:
         result = await scanner.scan(
             target=req.target,
@@ -3436,7 +3512,7 @@ async def run_ffuf_scan(req: FfufScanRequest):
             rate=req.rate
         )
         await activity_bus.emit("tool", "FFUF scan completed", "completed", project_id=None, icon="\U0001f50d", tool_name="ffuf")
-        
+
         return {
             "status": "ok",
             "tool": "ffuf",
@@ -3489,6 +3565,7 @@ async def run_tool(req: ToolRunRequest):
 
 # ===== V3 endpoints (Project Workspace, Terminal, Agent Knowledge) =====
 from .v3_endpoints import register_v3_endpoints
+
 v3_managers = register_v3_endpoints(app, settings, memory_engine)
 
 # ============ BUG BOUNTY MULTI-AGENT FRAMEWORK v7.0 ============
@@ -3727,7 +3804,7 @@ class WebhookConfigRequest(BaseModel):
 
 
 # Global webhook manager instance (shared across requests)
-from .bug_bounty import WebhookManager, WebhookConfig
+from .bug_bounty import WebhookConfig, WebhookManager
 
 bb_webhook_manager = WebhookManager()
 
@@ -3873,6 +3950,97 @@ class AIReportRequest(BaseModel):
     include_severity: list[str] | None = None  # filter to e.g. ["critical", "high"]
 
 
+@app.post("/api/projects/{project_id}/chat")
+async def project_chat(project_id: str, req: dict):
+    """AI chat for the Overview tab. Answers questions about agents, files, findings, and what to look for."""
+    from .providers import LLMMessage, MessageRole
+
+    if llm_router is None:
+        return {"status": "error", "response": "LLM not configured. Save an API key in Setup first."}
+
+    message = req.get("message", "")
+    if not message.strip():
+        return {"status": "error", "response": "Please enter a question."}
+
+    try:
+        project = memory_engine.load_project(project_id)
+        if project is None:
+            return {"status": "error", "response": "Project not found."}
+
+        # Build context from project state
+        activity = getattr(project, "activity", []) or []
+        recent_activity = activity[-10:] if len(activity) > 10 else activity
+        findings = getattr(project, "findings", []) or []
+        sev_counts = {}
+        for f in findings:
+            sev = (f.get("severity", "UNKNOWN") if isinstance(f, dict) else getattr(f, "severity", "UNKNOWN"))
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
+        sev_str = ", ".join(f"{v} {k}" for k, v in sorted(sev_counts.items())) if sev_counts else "none yet"
+
+        agent_lines = [
+            "1. URL Parser Agent - Parses HackerOne/BugCrowd URLs, extracts program metadata",
+            "2. Policy Enforcement Agent - Gatekeeper that reads program policy and creates filtering rules",
+            "3. Scope Guardian Agent - Verifies every action stays within authorized scope",
+            "4. Passive Intelligence Agent - Non-intrusive OSINT reconnaissance",
+            "5. Active Enumeration Agent - Direct interaction with targets to map attack surface",
+            "6. Vulnerability Scanner Agent - Tests for security flaws using OWASP Top 10 methodology",
+            "7. Validation Engine Agent - Multi-stage validation to eliminate false positives",
+            "8. Exploitation Agent - Creates safe proof-of-concepts with reproducible evidence",
+            "9. Analysis Agent - CVSS scoring, severity assessment, OWASP/CWE mapping",
+            "10. Report Generation Agent - Professional vulnerability reports in Blank.md format",
+        ]
+
+        activity_lines = []
+        for e in recent_activity:
+            ts = e.get("time", "")
+            act = e.get("action", "")
+            det = e.get("details", "")
+            activity_lines.append(f"  - [{ts}] {act}: {det}")
+
+        act_str = "\n".join(activity_lines) if activity_lines else "  No activity yet"
+        agent_str = "\n".join("  " + a for a in agent_lines)
+
+        context = f"""Project: {getattr(project, 'name', 'Unnamed')}
+Findings: {len(findings)} total ({sev_str})
+Recent Activity: {len(recent_activity)} events
+Available Agents: {len(agent_lines)}
+Agent details:
+{agent_str}
+
+Recent activity events:
+{act_str}"""
+
+        system_prompt = """You are SENTINEL-X's AI Assistant, embedded in the project Overview dashboard.
+You help the user understand what the security agents are doing, what files are being analyzed,
+what findings have been discovered, and what they should look for next.
+Answer concisely and helpfully based on the context provided. If you don't know something, say so."""
+
+        messages_list = [
+            LLMMessage(role=MessageRole.SYSTEM, content=system_prompt),
+            LLMMessage(role=MessageRole.USER, content=f"Context:\n{context}\n\nUser question: {message}"),
+        ]
+
+        response = await llm_router.complete(messages_list, max_tokens=1000)
+        return {"status": "ok", "response": response.content}
+
+    except Exception as e:
+        logger.error("project_chat_error", error=str(e), exc_info=True)
+        return {"status": "error", "response": f"Error: {str(e)[:200]}"}
+
+
+@app.get("/api/projects/{project_id}/bug-bounty-report")
+async def get_bug_bounty_report(project_id: str):
+    """Get the saved bug bounty pipeline report if one exists."""
+    project = memory_engine.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    report_text = getattr(project, 'bug_bounty_report', '')
+    return {
+        "has_report": bool(report_text),
+        "report_text": report_text or "",
+    }
+
+
 @app.post("/api/projects/{project_id}/report")
 async def generate_ai_report(project_id: str, req: AIReportRequest):
     """Have the configured model write a Blank.md report from the project's findings.
@@ -3960,7 +4128,7 @@ async def full_project_scan(project_id: str, req: FullScanRequest):
     # Seed bug bounty knowledge into the pipeline context so agents
     # operate with the Foundational Principles, Decision Hierarchy,
     # and Agent Architecture from the Bug Bounty v7.0 specification.
-    from .bug_bounty import get_full_system_prompt, FOUNDATIONAL_PRINCIPLES, DECISION_HIERARCHY
+    from .bug_bounty import get_full_system_prompt
     pipeline_context = {
         "bug_bounty_system_prompt": get_full_system_prompt(),
         "ethical_rules": [

@@ -19,10 +19,8 @@ Upgraded with:
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from hashlib import sha256
+from typing import Any
 
 
 @dataclass
@@ -30,7 +28,7 @@ class DataSourceResult:
     """Result from an external data source query."""
     source: str = ""
     success: bool = False
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     cached: bool = False
     query_time_ms: float = 0.0
@@ -39,14 +37,14 @@ class DataSourceResult:
 @dataclass
 class MergedEnrichment:
     """Merged enrichment from multiple data sources."""
-    subdomains: List[str] = field(default_factory=list)
-    technologies: List[Dict[str, Any]] = field(default_factory=list)
-    historical_urls: List[str] = field(default_factory=list)
-    ip_addresses: List[str] = field(default_factory=list)
-    open_ports: List[int] = field(default_factory=list)
-    certificates: List[Dict[str, Any]] = field(default_factory=list)
-    sources_used: List[str] = field(default_factory=list)
-    sources_failed: List[str] = field(default_factory=list)
+    subdomains: list[str] = field(default_factory=list)
+    technologies: list[dict[str, Any]] = field(default_factory=list)
+    historical_urls: list[str] = field(default_factory=list)
+    ip_addresses: list[str] = field(default_factory=list)
+    open_ports: list[int] = field(default_factory=list)
+    certificates: list[dict[str, Any]] = field(default_factory=list)
+    sources_used: list[str] = field(default_factory=list)
+    sources_failed: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
 
@@ -56,10 +54,10 @@ class _SourceCache:
     """Simple TTL cache for API results to avoid redundant calls."""
 
     def __init__(self, ttl_seconds: int = 3600):
-        self._cache: Dict[str, Tuple[float, Any]] = {}
+        self._cache: dict[str, tuple[float, Any]] = {}
         self._ttl = ttl_seconds
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         if key in self._cache:
             ts, val = self._cache[key]
             if time.monotonic() - ts < self._ttl:
@@ -130,7 +128,7 @@ class ShodanClient:
     def is_available(self) -> bool:
         return self._available
 
-    async def _query(self, endpoint: str, params: Dict) -> DataSourceResult:
+    async def _query(self, endpoint: str, params: dict) -> DataSourceResult:
         """Generic query with caching."""
         cache_key = f"shodan:{endpoint}:{json.dumps(params, sort_keys=True)}"
         cached = _cache.get(cache_key)
@@ -410,7 +408,7 @@ class URLScanClient:
 
 # ── Source Priority / Reliability ──────────────────────────────────────────
 
-SOURCE_RELIABILITY: Dict[str, float] = {
+SOURCE_RELIABILITY: dict[str, float] = {
     "securitytrails": 0.90,
     "shodan": 0.85,
     "censys": 0.80,
@@ -439,13 +437,11 @@ class DataSourceAggregator:
         if cache is not None:
             set_shared_cache(cache)
 
-    def get_available_sources(self) -> List[str]:
+    def get_available_sources(self) -> list[str]:
         """Return list of available (configured) source names, highest reliability first."""
         sources = []
         for name, client in self._sorted_sources():
-            if hasattr(client, "is_available") and client.is_available:
-                sources.append(name)
-            elif name == "urlscan":  # URLScan always available for public search
+            if (hasattr(client, "is_available") and client.is_available) or name == "urlscan":
                 sources.append(name)
         return sources
 
@@ -459,7 +455,7 @@ class DataSourceAggregator:
         ]
         return sorted(sources, key=lambda s: SOURCE_RELIABILITY.get(s[0], 0.5), reverse=True)
 
-    async def search_domain(self, domain: str) -> Dict[str, DataSourceResult]:
+    async def search_domain(self, domain: str) -> dict[str, DataSourceResult]:
         """Search all available sources for a domain. Returns per-source results.
 
         Higher-reliability sources are queried first. If a source returns
@@ -484,14 +480,14 @@ class DataSourceAggregator:
                 results[name] = DataSourceResult(source=name, error=str(e)[:100])
         return results
 
-    async def search_domain_batch(self, domains: List[str]) -> Dict[str, Dict[str, DataSourceResult]]:
+    async def search_domain_batch(self, domains: list[str]) -> dict[str, dict[str, DataSourceResult]]:
         """Search multiple domains at once. Returns {domain: {source: result}}."""
         results = {}
         for domain in domains:
             results[domain] = await self.search_domain(domain)
         return results
 
-    async def enrich_with_external_data(self, domain: str, intel: Dict[str, Any]) -> Dict[str, Any]:
+    async def enrich_with_external_data(self, domain: str, intel: dict[str, Any]) -> dict[str, Any]:
         """Enrich existing intelligence with external data source findings.
 
         Merges subdomains, technologies, historical URLs from all sources
@@ -646,6 +642,6 @@ class DataSourceAggregator:
         """Clear all cached API results."""
         _cache.clear()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         return {"cache_enabled": True, "ttl_seconds": 3600}

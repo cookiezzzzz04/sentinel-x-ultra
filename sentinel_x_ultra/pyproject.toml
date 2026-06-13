@@ -35,6 +35,51 @@ build-backend = "setuptools.build_meta"
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+# Enable all recommended rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    # "D",  # pydocstyle (disabled — too noisy for current codebase)
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    # Docstring rules (too noisy for current codebase)
+    "D100", "D101", "D102", "D103", "D104", "D105", "D107",
+    "D203",  # 1 blank line required before class docstring (conflicts with D211)
+    "D213",  # Multi-line docstring summary should start at second line
+    # Line length (ruff handles this separately)
+    "E501",
+    # Style preferences that reduce readability
+    "SIM108",  # Use ternary operator (often less readable)
+    "SIM105",  # Use contextlib.suppress (try/except/pass is clearer)
+    "SIM115",  # Use open-with context handler (not always appropriate)
+    "UP037",   # Remove quotes from type annotation (can break runtime typing)
+    # Allow semicolons on same line in some cases
+    "E702", "E703",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+    "N802",  # Function name should be lowercase
+    "N803",  # Argument name should be lowercase
+    "D400",  # First line should end with period
+    "D415",  # First line should end with period, question mark, or exclamation
+]
+
 [tool.mypy]
 python_version = "3.10"
 strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = [
+    "sentinel_x_ultra/tests",
+]

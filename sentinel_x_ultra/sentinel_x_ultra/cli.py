@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
-import click
 import webbrowser
+
+import click
 import uvicorn
 
 from .config import load_settings, save_default_config
@@ -92,8 +93,8 @@ def init():
 @click.argument("project_id")
 def info(project_id):
     """Show information about a project."""
-    from .memory import MemoryEngine
     from .config import load_settings
+    from .memory import MemoryEngine
 
     settings = load_settings()
     memory = MemoryEngine(settings.storage.base_path / settings.storage.projects_dir)

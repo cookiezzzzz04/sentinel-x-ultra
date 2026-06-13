@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator
+from typing import Any
 
 import structlog
 
@@ -264,7 +263,6 @@ class RAGEngine:
             ".cpp": "cpp",
             ".c": "c",
             ".rs": "rust",
-            ".ts": "typescript",
         }
         import os
         _, ext = os.path.splitext(file_path)

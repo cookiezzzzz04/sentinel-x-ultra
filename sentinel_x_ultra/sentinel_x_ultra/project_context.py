@@ -3,26 +3,26 @@ Project Context Storage - For bug bounty programs, agent learnings, and OWASP kn
 This file stores persistent context that agents can remember across sessions.
 """
 
-from pathlib import Path
-from typing import Optional, Dict, List, Any
-from datetime import datetime
-import json
 import hashlib
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
 class BugBountyProgram:
     """Stores bug bounty program scope and context"""
-    
+
     def __init__(
         self,
         program_url: str,
         platform: str = "hackerone",
-        scope: Dict[str, Any] = None,
-        tech_stack: Dict[str, Any] = None,
-        test_accounts: List[Dict[str, str]] = None,
-        roles: Dict[str, List[str]] = None,
-        findings: List[Dict[str, Any]] = None,
-        dismissed: List[Dict[str, str]] = None,
+        scope: dict[str, Any] = None,
+        tech_stack: dict[str, Any] = None,
+        test_accounts: list[dict[str, str]] = None,
+        roles: dict[str, list[str]] = None,
+        findings: list[dict[str, Any]] = None,
+        dismissed: list[dict[str, str]] = None,
         notes: str = "",
         report_template: str = "",
         created_at: str = None
@@ -38,7 +38,7 @@ class BugBountyProgram:
         self.notes = notes
         self.report_template = report_template
         self.created_at = created_at or datetime.utcnow().isoformat()
-    
+
     def to_dict(self) -> dict:
         return {
             "program_url": self.program_url,
@@ -53,7 +53,7 @@ class BugBountyProgram:
             "report_template": self.report_template,
             "created_at": self.created_at
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "BugBountyProgram":
         return cls(**data)
@@ -61,12 +61,12 @@ class BugBountyProgram:
 
 class AgentMemory:
     """Stores agent learnings and model preferences per project"""
-    
+
     def __init__(
         self,
         agent_id: str,
         model_preference: str = "",
-        learnings: List[str] = None,
+        learnings: list[str] = None,
         last_run: str = None,
         total_runs: int = 0
     ):
@@ -75,7 +75,7 @@ class AgentMemory:
         self.learnings = learnings or []
         self.last_run = last_run
         self.total_runs = total_runs
-    
+
     def to_dict(self) -> dict:
         return {
             "agent_id": self.agent_id,
@@ -84,7 +84,7 @@ class AgentMemory:
             "last_run": self.last_run,
             "total_runs": self.total_runs
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "AgentMemory":
         return cls(**data)
@@ -92,16 +92,16 @@ class AgentMemory:
 
 class ProjectContext:
     """Manages project context storage including bug bounty programs and agent memory"""
-    
+
     def __init__(self, storage_path: Path):
         self.storage_path = storage_path
         self.storage_path.mkdir(parents=True, exist_ok=True)
-    
+
     def _get_project_dir(self, project_id: str) -> Path:
         project_dir = self.storage_path / hashlib.md5(project_id.encode()).hexdigest()[:8]
         project_dir.mkdir(parents=True, exist_ok=True)
         return project_dir
-    
+
     def save_bug_bounty_program(self, project_id: str, program: BugBountyProgram) -> bool:
         """Save bug bounty program context for a project"""
         try:
@@ -113,20 +113,20 @@ class ProjectContext:
         except Exception as e:
             print(f"Error saving bug bounty program: {e}")
             return False
-    
-    def get_bug_bounty_program(self, project_id: str) -> Optional[BugBountyProgram]:
+
+    def get_bug_bounty_program(self, project_id: str) -> BugBountyProgram | None:
         """Load bug bounty program context for a project"""
         try:
             project_dir = self._get_project_dir(project_id)
             file_path = project_dir / "bugbounty_program.json"
             if file_path.exists():
-                with open(file_path, 'r') as f:
+                with open(file_path) as f:
                     return BugBountyProgram.from_dict(json.load(f))
             return None
         except Exception as e:
             print(f"Error loading bug bounty program: {e}")
             return None
-    
+
     def save_agent_memory(self, project_id: str, agent_id: str, memory: AgentMemory) -> bool:
         """Save agent memory (model preference, learnings) for a project"""
         try:
@@ -138,32 +138,32 @@ class ProjectContext:
         except Exception as e:
             print(f"Error saving agent memory: {e}")
             return False
-    
-    def get_agent_memory(self, project_id: str, agent_id: str) -> Optional[AgentMemory]:
+
+    def get_agent_memory(self, project_id: str, agent_id: str) -> AgentMemory | None:
         """Load agent memory for a specific agent in a project"""
         try:
             project_dir = self._get_project_dir(project_id)
             agent_file = project_dir / f"agent_{agent_id}.json"
             if agent_file.exists():
-                with open(agent_file, 'r') as f:
+                with open(agent_file) as f:
                     return AgentMemory.from_dict(json.load(f))
             return None
         except Exception as e:
             print(f"Error loading agent memory: {e}")
             return None
-    
-    def get_all_agent_memories(self, project_id: str) -> List[AgentMemory]:
+
+    def get_all_agent_memories(self, project_id: str) -> list[AgentMemory]:
         """Get all agent memories for a project"""
         memories = []
         try:
             project_dir = self._get_project_dir(project_id)
             for file in project_dir.glob("agent_*.json"):
-                with open(file, 'r') as f:
+                with open(file) as f:
                     memories.append(AgentMemory.from_dict(json.load(f)))
         except Exception as e:
             print(f"Error loading agent memories: {e}")
         return memories
-    
+
     def add_learning(self, project_id: str, agent_id: str, learning: str) -> bool:
         """Add a learning to an agent's memory"""
         memory = self.get_agent_memory(project_id, agent_id) or AgentMemory(agent_id=agent_id)
@@ -172,7 +172,7 @@ class ProjectContext:
             "timestamp": datetime.utcnow().isoformat()
         })
         return self.save_agent_memory(project_id, agent_id, memory)
-    
+
     def update_model_usage(self, project_id: str, agent_id: str, model: str) -> bool:
         """Update the model used for an agent"""
         memory = self.get_agent_memory(project_id, agent_id) or AgentMemory(agent_id=agent_id)
@@ -264,47 +264,47 @@ def get_bug_bounty_context_prompt(program: BugBountyProgram) -> str:
     """Generate a prompt with bug bounty program context"""
     if not program:
         return ""
-    
-    prompt_parts = ["""
+
+    prompt_parts = [f"""
 ## Bug Bounty Program Context - ALWAYS FOLLOW THIS SCOPE
 
-### Program Platform: {platform}
-### Program URL: {program_url}
-""".format(platform=program.platform.upper(), program_url=program.program_url)]
-    
+### Program Platform: {program.platform.upper()}
+### Program URL: {program.program_url}
+"""]
+
     if program.scope:
         if program.scope.get("in_scope"):
             prompt_parts.append("\n**🎯 IN-SCOPE TARGETS:**")
             for target in program.scope["in_scope"]:
                 prompt_parts.append(f"  ✓ {target}")
-        
+
         if program.scope.get("out_of_scope"):
             prompt_parts.append("\n**🚫 OUT-OF-SCOPE:**")
             for target in program.scope["out_of_scope"]:
                 prompt_parts.append(f"  ✗ {target}")
-        
+
         if program.scope.get("restrictions"):
             prompt_parts.append("\n**⚠️ RESTRICTIONS:**")
             for restriction in program.scope["restrictions"]:
                 prompt_parts.append(f"  ! {restriction}")
-    
+
     if program.tech_stack:
         prompt_parts.append("\n**🛠️ TECH STACK:**")
         for tech, desc in program.tech_stack.items():
             prompt_parts.append(f"  • {tech}: {desc}")
-    
+
     if program.roles:
         prompt_parts.append("\n**👥 USER ROLES:**")
         for role, permissions in program.roles.items():
             prompt_parts.append(f"  • {role}: {', '.join(permissions)}")
-    
+
     if program.test_accounts:
         prompt_parts.append("\n**🔑 TEST ACCOUNTS:**")
         for account in program.test_accounts:
             name = account.get('name', 'Unknown')
             desc = account.get('description', 'No description')
             prompt_parts.append(f"  • {name}: {desc}")
-    
+
     if program.findings:
         prompt_parts.append("\n**📊 CURRENT FINDINGS:**")
         for finding in program.findings:
@@ -313,15 +313,15 @@ def get_bug_bounty_context_prompt(program: BugBountyProgram) -> str:
             prompt_parts.append(f"  → [{status.upper()}] {finding.get('title', 'Untitled')} (Confidence: {confidence}%)")
             prompt_parts.append(f"    Impact: {finding.get('potential_impact', 'Not specified')}")
             prompt_parts.append(f"    Next: {finding.get('next_steps', 'Not specified')}")
-    
+
     if program.dismissed:
         prompt_parts.append("\n**❌ DISMISSED (Won't Re-test):**")
         for dismissed in program.dismissed:
             prompt_parts.append(f"  • {dismissed.get('target', 'Unknown')}: {dismissed.get('reason', 'No reason')}")
-    
+
     if program.notes:
         prompt_parts.append(f"\n**📝 PROJECT NOTES:**\n{program.notes}")
-    
+
     prompt_parts.append("""
 ### 🔒 TESTING RULES:
 1. ONLY test in-scope targets
@@ -330,5 +330,5 @@ def get_bug_bounty_context_prompt(program: BugBountyProgram) -> str:
 4. Document PoC with business impact
 5. Reference similar public reports for severity
 """)
-    
+
     return "\n".join(prompt_parts)

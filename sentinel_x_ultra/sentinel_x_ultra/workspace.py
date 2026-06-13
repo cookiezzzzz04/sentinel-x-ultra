@@ -25,11 +25,12 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import structlog
 

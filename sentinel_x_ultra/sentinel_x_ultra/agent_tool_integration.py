@@ -36,13 +36,11 @@ Phase 12: Token Testing          → jwt_toolkit + corstest + tko_subs
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
-from typing import Dict, List, Any, Optional, Tuple, Callable
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, field, asdict
-
+from typing import Any
 
 # ============================================================================
 # DATA MODELS
@@ -53,14 +51,14 @@ class ToolExecutionResult:
     """Result of executing a tool through the integration bridge."""
     tool_name: str
     status: str  # "completed", "failed", "unavailable"
-    findings: List[Dict[str, Any]]
+    findings: list[dict[str, Any]]
     execution_time_seconds: float
     raw_summary: str
     target: str
-    errors: List[str]
+    errors: list[str]
     phase: str
 
-    def to_dict(self) -> Dict: return asdict(self)
+    def to_dict(self) -> dict: return asdict(self)
 
 
 @dataclass
@@ -68,15 +66,15 @@ class IntegrationReport:
     """Full report of all tools used during an agent scan."""
     agent_name: str
     target: str
-    tools_executed: List[ToolExecutionResult]
+    tools_executed: list[ToolExecutionResult]
     total_findings: int
     total_tools_used: int
-    tools_unavailable: List[str]
-    phases_completed: List[str]
+    tools_unavailable: list[str]
+    phases_completed: list[str]
     started_at: str
     completed_at: str
 
-    def to_dict(self) -> Dict: return asdict(self)
+    def to_dict(self) -> dict: return asdict(self)
 
 
 # ============================================================================
@@ -99,8 +97,8 @@ class AgentToolIntegration:
     """
 
     def __init__(self):
-        self._lazy_loads: Dict[str, Any] = {}
-        self._cache: Dict[str, ToolExecutionResult] = {}
+        self._lazy_loads: dict[str, Any] = {}
+        self._cache: dict[str, ToolExecutionResult] = {}
 
     # =========================================================================
     # TOOL LOADING (lazy — only imports tools when needed)
@@ -114,7 +112,7 @@ class AgentToolIntegration:
             self._lazy_loads[key] = getattr(mod, getter)()
         return self._lazy_loads[key]
 
-    def _get(self, name: str) -> Optional[Any]:
+    def _get(self, name: str) -> Any | None:
         """Get a tool instance by name."""
         tool_map = {
             # Extended tools (recon_tools_extended.py)
@@ -142,6 +140,7 @@ class AgentToolIntegration:
             "ffuf": ("ffuf_tool", "get_ffuf_tool"),
             "gobuster": ("gobuster_tool", "get_gobuster_tool"),
             "hydra": ("hydra_tool", "get_hydra_tool"),
+            "john": ("john_tool", "get_john_tool"),
             "sqlmap": ("sqlmap_tool", "get_sqlmap_tool"),
             "xxe": ("xxe_tool", "get_xxe_tool"),
             "deserialization": ("deserialization_tool", "get_deserialization_tool"),
@@ -165,7 +164,7 @@ class AgentToolIntegration:
         tool = self._get(tool_name)
         return tool is not None and (hasattr(tool, "is_available") and tool.is_available())
 
-    def get_available(self, *names: str) -> List[Tuple[str, Any]]:
+    def get_available(self, *names: str) -> list[tuple[str, Any]]:
         """Get all available tools from a list of names."""
         result = []
         for name in names:
@@ -178,7 +177,7 @@ class AgentToolIntegration:
     # PHASE EXECUTORS — Each maps to a bug bounty methodology phase
     # =========================================================================
 
-    async def run_subdomain_enumeration(self, target: str) -> List[ToolExecutionResult]:
+    async def run_subdomain_enumeration(self, target: str) -> list[ToolExecutionResult]:
         """Phase 2: Subdomain Enumeration — uses all available subdomain tools."""
         results = []
         tools = self.get_available("amass", "sublist3r", "knockpy", "dnscan", "subfinder")
@@ -205,7 +204,7 @@ class AgentToolIntegration:
                                               target, [], "subdomain_enumeration"))
         return results
 
-    async def run_dns_resolution(self, target: str) -> List[ToolExecutionResult]:
+    async def run_dns_resolution(self, target: str) -> list[ToolExecutionResult]:
         """DNS resolution: massdns + dnsx + dnscan for bulk DNS."""
         results = []
         for name in ["massdns", "dnsx", "dnscan"]:
@@ -230,7 +229,7 @@ class AgentToolIntegration:
                                               target, [], "dns_resolution"))
         return results
 
-    async def run_content_discovery(self, target_url: str) -> List[ToolExecutionResult]:
+    async def run_content_discovery(self, target_url: str) -> list[ToolExecutionResult]:
         """Phase 5: Content Discovery — dirsearch, gobuster, wfuzz, ffuf."""
         results = []
         tools = self.get_available("dirsearch", "gobuster", "wfuzz", "ffuf")
@@ -262,7 +261,7 @@ class AgentToolIntegration:
                                               target_url, [], "content_discovery"))
         return results
 
-    async def run_vulnerability_scanning(self, target_url: str) -> List[ToolExecutionResult]:
+    async def run_vulnerability_scanning(self, target_url: str) -> list[ToolExecutionResult]:
         """Phase 6: Vulnerability Scanning — nuclei, xxe, deserialization, jwt_toolkit, corstest."""
         results = []
         tools = self.get_available("nuclei", "xxe", "deserialization", "corstest")
@@ -292,7 +291,7 @@ class AgentToolIntegration:
 
         return results
 
-    async def run_cms_analysis(self, target_url: str) -> List[ToolExecutionResult]:
+    async def run_cms_analysis(self, target_url: str) -> list[ToolExecutionResult]:
         """Phase 7: CMS Analysis — wpscan, cmsmap."""
         results = []
         for name in ["wpscan", "cmsmap"]:
@@ -315,7 +314,7 @@ class AgentToolIntegration:
 
         return results
 
-    async def run_js_analysis(self, target_path: str) -> List[ToolExecutionResult]:
+    async def run_js_analysis(self, target_path: str) -> list[ToolExecutionResult]:
         """Phase 8: JavaScript Analysis — retire.js."""
         tool = self._get("retirejs")
         if tool and tool.is_available():
@@ -329,7 +328,7 @@ class AgentToolIntegration:
         return [ToolExecutionResult("retirejs", "unavailable", [], 0,
                                    "retire.js not available. Install to ~/.sentinelx/tools/", target_path, [], "js_analysis")]
 
-    async def run_git_analysis(self, target_url: str) -> List[ToolExecutionResult]:
+    async def run_git_analysis(self, target_url: str) -> list[ToolExecutionResult]:
         """Phase 9: Git Analysis — gittools, git_secrets."""
         results = []
         for name in ["gittools", "git_secrets"]:
@@ -356,7 +355,7 @@ class AgentToolIntegration:
                     results.append(ToolExecutionResult(name, "failed", [], 0, str(e), target_url, [str(e)], "git_analysis"))
         return results
 
-    async def run_token_testing(self, token: str, target: str = "") -> List[ToolExecutionResult]:
+    async def run_token_testing(self, token: str, target: str = "") -> list[ToolExecutionResult]:
         """Phase 12: Token Testing — jwt_toolkit."""
         if not token:
             return [ToolExecutionResult("jwt_toolkit", "skipped", [], 0, "No JWT token provided to analyze", target, [], "token_testing")]
@@ -371,7 +370,7 @@ class AgentToolIntegration:
                 return [ToolExecutionResult("jwt_toolkit", "failed", [], 0, str(e), target, [str(e)], "token_testing")]
         return [ToolExecutionResult("jwt_toolkit", "unavailable", [], 0, "JWT Toolkit is built-in (always available)", target, [], "token_testing")]
 
-    async def run_infrastructure_scan(self, target: str) -> List[ToolExecutionResult]:
+    async def run_infrastructure_scan(self, target: str) -> list[ToolExecutionResult]:
         """Phase 11: Infrastructure — nmap, eyewitness."""
         results = []
         for name in ["nmap", "eyewitness"]:
@@ -391,7 +390,23 @@ class AgentToolIntegration:
                     results.append(ToolExecutionResult(name, "failed", [], 0, str(e), target, [str(e)], "infrastructure"))
         return results
 
-    async def run_password_testing(self, target: str, service: str = "ssh") -> List[ToolExecutionResult]:
+    async def run_hash_cracking(self, hashes: str, hash_type: str = "auto", mode: str = "wordlist") -> list[ToolExecutionResult]:
+        """John the Ripper hash cracking."""
+        tool = self._get("john")
+        if tool and tool.is_available():
+            try:
+                r = await tool.crack(hashes, hash_type=hash_type, mode=mode, timeout_sec=60)
+                return [ToolExecutionResult("john", "completed" if not r.errors else "completed_with_errors",
+                                           r.cracked, r.execution_time_seconds,
+                                           f"Cracked {r.cracked_count}/{r.total_hashes} hashes",
+                                           hashes[:50], r.errors, "hash_cracking")]
+            except Exception as e:
+                return [ToolExecutionResult("john", "failed", [], 0, str(e), hashes[:50], [str(e)], "hash_cracking")]
+        return [ToolExecutionResult("john", "unavailable", [], 0,
+                                   "John the Ripper not available. Install to ~/.sentinelx/tools/",
+                                   hashes[:50], [], "hash_cracking")]
+
+    async def run_password_testing(self, target: str, service: str = "ssh") -> list[ToolExecutionResult]:
         """Hydra brute force testing."""
         tool = self._get("hydra")
         if tool and tool.is_available():
@@ -404,7 +419,7 @@ class AgentToolIntegration:
                 return [ToolExecutionResult("hydra", "failed", [], 0, str(e), target, [str(e)], "password_testing")]
         return [ToolExecutionResult("hydra", "unavailable", [], 0, "Hydra not available. Install to ~/.sentinelx/tools/", target, [], "password_testing")]
 
-    async def run_sql_injection_scan(self, target_url: str) -> List[ToolExecutionResult]:
+    async def run_sql_injection_scan(self, target_url: str) -> list[ToolExecutionResult]:
         """SQLMap SQL injection scanning."""
         results = []
         tool = self._get("sqlmap")
@@ -421,7 +436,7 @@ class AgentToolIntegration:
             results.append(ToolExecutionResult("sqlmap", "unavailable", [], 0, "SQLMap not available", target_url, [], "sql_injection"))
         return results
 
-    async def run_subdomain_takeover_check(self, target_domain: str) -> List[ToolExecutionResult]:
+    async def run_subdomain_takeover_check(self, target_domain: str) -> list[ToolExecutionResult]:
         """tko-subs subdomain takeover detection."""
         tool = self._get("tko_subs")
         if tool and tool.is_available():
@@ -531,6 +546,17 @@ class AgentToolIntegration:
             except Exception:
                 pass
 
+        # Hash Cracking — John the Ripper (offline complement to Hydra's online brute force)
+        # Available but passive: agents can call run_hash_cracking() when password hashes
+        # are harvested during the engagement (e.g. from .git dumps, config files, DB leaks)
+        _tool3 = self._get("john")
+        if _tool3 and _tool3.is_available():
+            results.append(ToolExecutionResult(
+                "john", "completed", [], 0.0,
+                "John the Ripper available for hash cracking (pass harvested hashes to run_hash_cracking)",
+                target_url, [], "hash_cracking"
+            ))
+
         # Phase 9: Git Analysis — gittools + git_secrets (exposed .git = vuln)
         try:
             _gr = await self.run_git_analysis(target_url)
@@ -613,7 +639,7 @@ class AgentToolIntegration:
                                 start, datetime.utcnow().isoformat())
 
     async def scan_with_context(self, agent_name: str, target: str,
-                                 context: Optional[Dict[str, Any]] = None) -> IntegrationReport:
+                                 context: dict[str, Any] | None = None) -> IntegrationReport:
         """Main entry point for agents. Routes to the appropriate phase based on agent name."""
         agent_map = {
             "passive_intel": self.run_for_agent_4,
@@ -628,7 +654,7 @@ class AgentToolIntegration:
         # Default: all phases
         return await self.run_full_recon_workflow(target)
 
-    def get_all_tool_status(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_tool_status(self) -> dict[str, dict[str, Any]]:
         """Get status of all 25+ integrated tools."""
         all_names = [
             "amass", "sublist3r", "knockpy", "dnscan", "massdns",
@@ -652,7 +678,7 @@ class AgentToolIntegration:
 # GLOBAL INSTANCE
 # ============================================================================
 
-_agent_tool_integration: Optional[AgentToolIntegration] = None
+_agent_tool_integration: AgentToolIntegration | None = None
 
 
 def get_agent_tool_integration() -> AgentToolIntegration:
@@ -711,6 +737,7 @@ Agent 6 (Vuln Scanner → TESTS ALL FINDINGS:
   ├─ dalfox       — XSS scanning
   ├─ sqlmap       — SQL injection automation
   ├─ hydra        — Brute force testing
+  ├─ john         — Offline hash cracking (complements Hydra)
   ├─ xxe_tool     — XXE injection payloads
   ├─ deserialization_tool — Insecure deserialization
   ├─ jwt_toolkit  — JWT token security analysis
@@ -724,7 +751,8 @@ Agent 7 (Validation):  Re-runs key tools to confirm findings:
 
 Agent 8 (Exploitation):  Uses findings for PoC generation:
   ├─ sqlmap       — Extract data from SQLi findings
-  └─ hydra        — Demonstrate credential access
+  ├─ hydra        — Demonstrate credential access
+  └─ john         — Crack harvested password hashes for credential access demonstration
 
 Agent 9 (Analysis):     No direct tool use — analyzes validation data
 Agent 10 (Report Gen):  No direct tool use — formats findings into reports

@@ -11,14 +11,14 @@ Features:
 """
 
 import asyncio
-import subprocess
-import re
-import os
 import json
+import os
+import re
+import subprocess
 import tempfile
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import Any
 
 
 @dataclass
@@ -26,17 +26,17 @@ class SQLMapResult:
     """Structured SQLMap scan result"""
     target: str
     technique: str
-    dbms: Optional[str]
-    databases: List[Dict[str, Any]]
-    tables: List[Dict[str, Any]]
-    entries: List[Dict[str, Any]]
-    vulnerable_parameters: List[str]
+    dbms: str | None
+    databases: list[dict[str, Any]]
+    tables: list[dict[str, Any]]
+    entries: list[dict[str, Any]]
+    vulnerable_parameters: list[str]
     execution_time_seconds: float
     tool_version: str
     raw_output: str
-    errors: List[str]
+    errors: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -46,10 +46,10 @@ class SQLMapTool:
     def __init__(self):
         self.name = "sqlmap"
         self.supported_techniques = ["B", "E", "U", "S", "T", "BEUST"]  # Boolean, Error, Union, Stacked, Time, All
-        self.version_cache: Optional[str] = None
-        self._path_cache: Optional[str] = None
+        self.version_cache: str | None = None
+        self._path_cache: str | None = None
 
-    def _get_sqlmap_path(self) -> Optional[str]:
+    def _get_sqlmap_path(self) -> str | None:
         """Get sqlmap executable path, checking common locations"""
         if self._path_cache:
             return self._path_cache
@@ -114,18 +114,18 @@ class SQLMapTool:
     async def scan(
         self,
         target: str,
-        data: Optional[str] = None,
-        cookie: Optional[str] = None,
+        data: str | None = None,
+        cookie: str | None = None,
         user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         technique: str = "BEUST",
         level: int = 1,
         risk: int = 1,
         threads: int = 1,
-        dbms: Optional[str] = None,
+        dbms: str | None = None,
         batch: bool = True,
         random_agent: bool = True,
         timeout_sec: int = 600,
-        extra_args: Optional[List[str]] = None,
+        extra_args: list[str] | None = None,
     ) -> SQLMapResult:
         """
         Execute a SQLMap SQL injection scan.
@@ -148,7 +148,7 @@ class SQLMapTool:
         errors = []
         start_time = datetime.now()
         raw_output = ""
-        vulnerable_params: List[str] = []
+        vulnerable_params: list[str] = []
 
         sqlmap_path = self._get_sqlmap_path()
         if not sqlmap_path:
@@ -249,7 +249,7 @@ class SQLMapTool:
                         if fname.endswith('.json') or fname.endswith('.log'):
                             fpath = os.path.join(root, fname)
                             try:
-                                with open(fpath, 'r', errors='replace') as f:
+                                with open(fpath, errors='replace') as f:
                                     json_data = json.load(f)
                             except (json.JSONDecodeError, Exception):
                                 pass
@@ -316,7 +316,7 @@ class SQLMapTool:
         target: str,
         database: str,
         table: str,
-        columns: Optional[List[str]] = None,
+        columns: list[str] | None = None,
         technique: str = "BEUST",
         batch: bool = True,
         timeout_sec: int = 600,
@@ -332,7 +332,7 @@ class SQLMapTool:
         )
         return result
 
-    def get_capabilities(self) -> Dict[str, Any]:
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -366,7 +366,7 @@ class SQLMapTool:
 
 
 # Global instance for tool registry
-_sqlmap_tool: Optional[SQLMapTool] = None
+_sqlmap_tool: SQLMapTool | None = None
 
 
 def get_sqlmap_tool() -> SQLMapTool:

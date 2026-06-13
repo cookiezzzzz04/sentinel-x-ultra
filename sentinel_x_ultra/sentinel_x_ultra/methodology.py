@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import structlog
 
@@ -350,7 +351,7 @@ class MethodologyReferenceEngine:
         source_l = (source or "").lower()
         if not source_l:
             return False
-        if "github.com/" in source_l or "://" in source_l and "methodology" in source_l:
+        if "github.com/" in source_l or ("://" in source_l and "methodology" in source_l):
             # Allow tools/repos as references, but reject them when used
             # as the *only* evidence for a finding.
             return False

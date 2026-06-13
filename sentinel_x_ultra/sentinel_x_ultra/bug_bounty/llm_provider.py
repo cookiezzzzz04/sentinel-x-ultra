@@ -22,10 +22,9 @@ Usage by agents:
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-
+from typing import Any
 
 # ── Configuration ───────────────────────────────────────────────────────────
 
@@ -82,8 +81,8 @@ class LLMAnalysis:
     reasoning: str = ""
     confidence: float = 0.0
     classification: str = ""
-    key_findings: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
+    key_findings: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
     raw_response: str = ""
 
 
@@ -111,8 +110,8 @@ class VulnerabilityHypothesis:
     likelihood: str = "MEDIUM"  # LOW / MEDIUM / HIGH
     affected_endpoint: str = ""
     reasoning: str = ""
-    suggested_payloads: List[str] = field(default_factory=list)
-    expected_indicators: List[str] = field(default_factory=list)
+    suggested_payloads: list[str] = field(default_factory=list)
+    expected_indicators: list[str] = field(default_factory=list)
     priority_score: float = 0.0
 
 
@@ -341,11 +340,11 @@ class LLMProvider:
         cvss = await provider.score_cvss(evidence)
     """
 
-    def __init__(self, config: Optional[LLMConfig] = None):
+    def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig.from_env()
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
         self._provider_type = self.config.provider_type
-        self._capabilities: List[str] = ["reasoning", "analysis", "scoring", "classification"]
+        self._capabilities: list[str] = ["reasoning", "analysis", "scoring", "classification"]
 
     # ═══════════════════════════════════════════════════════════════════════════
     # FACTORY
@@ -372,9 +371,7 @@ class LLMProvider:
     @property
     def is_available(self) -> bool:
         """Check if this provider can make LLM calls."""
-        if self._provider_type == LLMProviderType.OPENAI:
-            return bool(self.config.api_key)
-        elif self._provider_type == LLMProviderType.CLAUDE:
+        if self._provider_type == LLMProviderType.OPENAI or self._provider_type == LLMProviderType.CLAUDE:
             return bool(self.config.api_key)
         elif self._provider_type == LLMProviderType.OLLAMA:
             return True  # Checked at call time
@@ -399,8 +396,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str = "",
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         """
         Core reasoning method. Send a prompt to the LLM and get text back.
@@ -427,8 +424,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str = "",
-        temperature: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        temperature: float | None = None,
+    ) -> dict[str, Any]:
         """
         Send a prompt and parse the response as JSON.
 
@@ -445,7 +442,7 @@ class LLMProvider:
     async def analyze(
         self,
         template: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         system_prompt: str = "",
     ) -> LLMAnalysis:
         """
@@ -472,9 +469,9 @@ class LLMProvider:
     async def analyze_structured(
         self,
         template: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         system_prompt: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Fill a prompt template and get a structured (JSON) response.
 
@@ -496,9 +493,9 @@ class LLMProvider:
     async def prioritize_assets(
         self,
         program_context: str,
-        assets: List[Dict[str, Any]],
-        technologies: List[str],
-    ) -> List[Dict[str, Any]]:
+        assets: list[dict[str, Any]],
+        technologies: list[str],
+    ) -> list[dict[str, Any]]:
         """Use LLM to prioritize discovered assets by testing value."""
         context = {
             "program_context": program_context[:2000],
@@ -513,10 +510,10 @@ class LLMProvider:
     async def generate_hypotheses(
         self,
         target: str,
-        technology_stack: List[str],
-        endpoints: List[str],
-        historical_findings: List[str],
-    ) -> List[VulnerabilityHypothesis]:
+        technology_stack: list[str],
+        endpoints: list[str],
+        historical_findings: list[str],
+    ) -> list[VulnerabilityHypothesis]:
         """Generate vulnerability hypotheses for a target."""
         context = {
             "target": target,
@@ -534,9 +531,9 @@ class LLMProvider:
         finding_title: str,
         vuln_type: str,
         target: str,
-        evidence: Dict[str, Any],
-        steps: List[str],
-    ) -> Dict[str, Any]:
+        evidence: dict[str, Any],
+        steps: list[str],
+    ) -> dict[str, Any]:
         """Use LLM to analyze whether a finding is a false positive."""
         context = {
             "finding_title": finding_title,
@@ -583,7 +580,7 @@ class LLMProvider:
         self,
         url: str,
         content: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Use LLM to analyze a bug bounty program page."""
         context = {
             "url": url,
@@ -594,11 +591,11 @@ class LLMProvider:
 
     async def make_policy_decision(
         self,
-        finding: Dict[str, Any],
-        policy: Dict[str, Any],
-        accepted_types: List[str],
-        rejected_types: List[str],
-    ) -> Dict[str, Any]:
+        finding: dict[str, Any],
+        policy: dict[str, Any],
+        accepted_types: list[str],
+        rejected_types: list[str],
+    ) -> dict[str, Any]:
         """Use LLM to make a policy enforcement decision."""
         context = {
             "finding_json": json.dumps(finding, indent=2)[:3000],
@@ -611,10 +608,10 @@ class LLMProvider:
     async def authorize_scope(
         self,
         target: str,
-        scope: Dict[str, Any],
-        owned_domains: List[str],
-        third_party: List[str],
-    ) -> Dict[str, Any]:
+        scope: dict[str, Any],
+        owned_domains: list[str],
+        third_party: list[str],
+    ) -> dict[str, Any]:
         """Use LLM to authorize/deny scope access."""
         context = {
             "target": target,
@@ -627,9 +624,9 @@ class LLMProvider:
     async def analyze_osint(
         self,
         target: str,
-        osint_data: Dict[str, Any],
-        tools_used: List[str],
-    ) -> Dict[str, Any]:
+        osint_data: dict[str, Any],
+        tools_used: list[str],
+    ) -> dict[str, Any]:
         """Use LLM to analyze OSINT data and extract actionable intelligence."""
         context = {
             "target": target,
@@ -640,10 +637,10 @@ class LLMProvider:
 
     async def plan_exploitation(
         self,
-        vuln_json: Dict[str, Any],
-        evidence: Dict[str, Any],
+        vuln_json: dict[str, Any],
+        evidence: dict[str, Any],
         target: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Use LLM to design a safe proof-of-concept."""
         context = {
             "vuln_json": json.dumps(vuln_json, indent=2)[:3000],
@@ -654,9 +651,9 @@ class LLMProvider:
 
     async def write_report(
         self,
-        finding: Dict[str, Any],
-        analysis: Dict[str, Any],
-        poc: Dict[str, Any],
+        finding: dict[str, Any],
+        analysis: dict[str, Any],
+        poc: dict[str, Any],
     ) -> str:
         """Use LLM to generate a professional vulnerability report."""
         context = {
@@ -684,8 +681,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str,
-        temperature: Optional[float],
-        max_tokens: Optional[int],
+        temperature: float | None,
+        max_tokens: int | None,
     ) -> str:
         """Call OpenAI API."""
         try:
@@ -727,8 +724,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str,
-        temperature: Optional[float],
-        max_tokens: Optional[int],
+        temperature: float | None,
+        max_tokens: int | None,
     ) -> str:
         """Call Anthropic Claude API."""
         try:
@@ -768,8 +765,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str,
-        temperature: Optional[float],
-        max_tokens: Optional[int],
+        temperature: float | None,
+        max_tokens: int | None,
     ) -> str:
         """Call local Ollama instance."""
         try:
@@ -802,8 +799,8 @@ class LLMProvider:
         self,
         prompt: str,
         system_prompt: str,
-        temperature: Optional[float],
-        max_tokens: Optional[int],
+        temperature: float | None,
+        max_tokens: int | None,
     ) -> str:
         """Try providers in order: OpenAI → Claude → Ollama."""
         # Try OpenAI first
@@ -831,7 +828,7 @@ class LLMProvider:
         """Return a structured fallback response when LLM is unavailable."""
         return f"[LLM Fallback: {reason}]"
 
-    def _parse_json_response(self, response: str) -> Dict[str, Any]:
+    def _parse_json_response(self, response: str) -> dict[str, Any]:
         """Extract JSON from an LLM response, handling markdown fences and extra text."""
         if not response:
             return {}
@@ -866,7 +863,7 @@ class LLMProvider:
 
 # ── Convenience Factory ─────────────────────────────────────────────────────
 
-_default_provider: Optional[LLMProvider] = None
+_default_provider: LLMProvider | None = None
 
 
 def get_llm_provider() -> LLMProvider:

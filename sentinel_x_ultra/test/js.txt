@@ -1,0 +1,6 @@
+# js.txt - JavaScript files discovered (often leak endpoints, keys, logic)
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat urls.txt | grep -iE '.js' | grep -ivE '.json' | sort -u | tee js.txt
+https://example.com/static/js/app.js

@@ -16,17 +16,15 @@ Hard Constraints:
 - No inference is allowed without evidence backing
 """
 
-import re
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-
+from typing import Any
 
 # ── Enums / Constants ───────────────────────────────────────────────────────
 
 SEVERITY_ORDER = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1, "None": 0, "UNKNOWN": -1}
 
 # CWE mappings keyed by observed behavioral patterns (NOT by vulnerability type)
-CWE_BY_PATTERN: Dict[str, Tuple[str, List[Dict[str, Any]]]] = {
+CWE_BY_PATTERN: dict[str, tuple[str, list[dict[str, Any]]]] = {
     "unauthorized_data_access": ("CWE-639", [{"cwe": "CWE-862", "confidence": 0.6}]),
     "authentication_bypass": ("CWE-287", [{"cwe": "CWE-306", "confidence": 0.5}]),
     "injection_behavior": ("CWE-94", [{"cwe": "CWE-77", "confidence": 0.5}]),
@@ -42,7 +40,7 @@ CWE_BY_PATTERN: Dict[str, Tuple[str, List[Dict[str, Any]]]] = {
 }
 
 # OWASP mappings keyed by observed behavior
-OWASP_BY_PATTERN: Dict[str, List[Dict[str, Any]]] = {
+OWASP_BY_PATTERN: dict[str, list[dict[str, Any]]] = {
     "unauthorized_data_access": [{"category": "A01:2021 Broken Access Control", "confidence": 0.8}],
     "authentication_bypass": [{"category": "A07:2021 Identification and Authentication Failures", "confidence": 0.8}],
     "injection_behavior": [{"category": "A03:2021 Injection", "confidence": 0.8}],
@@ -69,7 +67,7 @@ class CVSSMetrics:
     UI: str = "UNKNOWN"  # None / Required
     S: str = "UNKNOWN"   # Unchanged / Changed
     C: str = "UNKNOWN"   # None / Low / High
-    I: str = "UNKNOWN"   # None / Low / High
+    impact_int: str = "UNKNOWN"   # None / Low / High
     A: str = "UNKNOWN"   # None / Low / High
 
 
@@ -93,7 +91,7 @@ class CWEAlternative:
 class CWEInfo:
     """CWE classification output."""
     primary: str = ""
-    alternatives: List[CWEAlternative] = field(default_factory=list)
+    alternatives: list[CWEAlternative] = field(default_factory=list)
 
 
 @dataclass
@@ -107,7 +105,7 @@ class OWASPAlternative:
 class OWASPInfo:
     """OWASP mapping output."""
     primary: str = ""
-    alternatives: List[OWASPAlternative] = field(default_factory=list)
+    alternatives: list[OWASPAlternative] = field(default_factory=list)
 
 
 @dataclass
@@ -122,8 +120,8 @@ class DetailedAnalysis:
     remediation_priority: str = "Info"
     business_impact: str = "NOT DEMONSTRATED"
     confidence: float = 0.0
-    evidence_used: List[str] = field(default_factory=list)
-    uncertainties: List[str] = field(default_factory=list)
+    evidence_used: list[str] = field(default_factory=list)
+    uncertainties: list[str] = field(default_factory=list)
     decision: str = "REVIEW"  # Analysis-level decision
 
 
@@ -155,20 +153,20 @@ class FindingAnalysis:
     """
     # Original fields (backward compatible)
     title: str = ""
-    cvss: Optional[CVSSScore] = None
+    cvss: CVSSScore | None = None
     cwe_primary: str = ""
-    cwe_secondary: List[str] = field(default_factory=list)
+    cwe_secondary: list[str] = field(default_factory=list)
     owasp_mapping: str = ""
     exploitability: str = ""
     remediation_priority: str = ""
     business_impact: str = ""
 
     # New fields
-    detailed: Optional[DetailedAnalysis] = None
+    detailed: DetailedAnalysis | None = None
     decision: str = "REVIEW"
     confidence: float = 0.0
-    evidence_used: List[str] = field(default_factory=list)
-    uncertainties: List[str] = field(default_factory=list)
+    evidence_used: list[str] = field(default_factory=list)
+    uncertainties: list[str] = field(default_factory=list)
 
 
 # ── Evidence-Driven Security Analysis Engine ───────────────────────────────
@@ -202,7 +200,7 @@ class AnalysisAgent:
     # PUBLIC API (Backward Compatible)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def analyze(self, finding: Dict[str, Any]) -> FindingAnalysis:
+    async def analyze(self, finding: dict[str, Any]) -> FindingAnalysis:
         """Analyze a finding using evidence-driven analysis.
 
         Runs the full pipeline:
@@ -298,7 +296,7 @@ class AnalysisAgent:
     # STEP 2 — EVIDENCE EXTRACTION
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _extract_evidence(self, finding: Dict[str, Any]) -> List[Dict[str, str]]:
+    def _extract_evidence(self, finding: dict[str, Any]) -> list[dict[str, str]]:
         """Extract ONLY observable facts from evidence.
 
         Valid facts: HTTP requests, HTTP responses, authentication state (if proven),
@@ -306,7 +304,7 @@ class AnalysisAgent:
 
         Unobserved fields: NOT extracted.
         """
-        items: List[Dict[str, str]] = []
+        items: list[dict[str, str]] = []
 
         # Extract from evidence dict
         evidence_raw = finding.get("evidence", {})
@@ -371,7 +369,7 @@ class AnalysisAgent:
     # STEP 3 — CVSS DERIVATION (STRICT)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _derive_cvss(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CVSSEntry:
+    async def _derive_cvss(self, finding: dict[str, Any], evidence: list[dict[str, str]]) -> CVSSEntry:
         """Derive CVSS 3.1 from evidence only.
 
         Phase 5 Deep: Uses LLM for nuanced CVSS metric determination when
@@ -620,7 +618,7 @@ class AnalysisAgent:
     # STEP 4 — CWE CLASSIFICATION (EVIDENCE-JUSTIFIED)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def _classify_cwe(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> CWEInfo:
+    async def _classify_cwe(self, finding: dict[str, Any], evidence: list[dict[str, str]]) -> CWEInfo:
         """Classify CWE from observed behavior only.
 
         Phase 5 Deep: Uses LLM for nuanced CWE classification when evidence
@@ -725,7 +723,7 @@ class AnalysisAgent:
     # STEP 5 — OWASP MAPPING (CONTEXTUAL)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _map_owasp(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> OWASPInfo:
+    def _map_owasp(self, finding: dict[str, Any], evidence: list[dict[str, str]]) -> OWASPInfo:
         """Map to OWASP Top 10 from observed behavior.
 
         Must reflect actual system weakness observed, not vulnerability label alone.
@@ -782,7 +780,7 @@ class AnalysisAgent:
     # STEP 6 — EXPLOITABILITY MODEL
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _assess_exploitability(self, finding: Dict[str, Any], evidence: List[Dict[str, str]],
+    def _assess_exploitability(self, finding: dict[str, Any], evidence: list[dict[str, str]],
                                 cvss: CVSSEntry) -> str:
         """Derive exploitability from evidence only.
 
@@ -826,7 +824,7 @@ class AnalysisAgent:
     # STEP 7 — BUSINESS IMPACT (STRICT)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _assess_impact(self, finding: Dict[str, Any], evidence: List[Dict[str, str]]) -> str:
+    def _assess_impact(self, finding: dict[str, Any], evidence: list[dict[str, str]]) -> str:
         """Assess business impact from directly evidenced observation only.
 
         VALID: unauthorized data returned, privilege change observed,
@@ -868,8 +866,8 @@ class AnalysisAgent:
     # STEP 8 — CONFIDENCE MODEL
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _calculate_confidence(self, finding: Dict[str, Any], evidence: List[Dict[str, str]],
-                               cvss: CVSSEntry, cwe: CWEInfo, impact: str) -> Tuple[float, List[str]]:
+    def _calculate_confidence(self, finding: dict[str, Any], evidence: list[dict[str, str]],
+                               cvss: CVSSEntry, cwe: CWEInfo, impact: str) -> tuple[float, list[str]]:
         """Calculate confidence from completeness of evidence.
 
         90-100: full evidence coverage, reproducible, consistent validation
@@ -969,6 +967,6 @@ class AnalysisAgent:
     # HELPERS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _evidence_mentions(self, text: str, keywords: List[str]) -> bool:
+    def _evidence_mentions(self, text: str, keywords: list[str]) -> bool:
         """Check if evidence text mentions any of the given keywords."""
         return any(kw.lower() in text for kw in keywords)

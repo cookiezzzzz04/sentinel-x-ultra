@@ -5,30 +5,30 @@ Provides structured execution and result parsing for gobuster directory/DNS fuzz
 
 Modes:
 - dir: Directory and file enumeration
-- dns: DNS subdomain discovery  
+- dns: DNS subdomain discovery
 - vhost: Virtual host discovery
 """
 
 import asyncio
-import subprocess
-import re
 import os
-import platform
 import os.path
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+import platform
+import re
+import subprocess
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 
 def _convert_msys_path(path: str) -> str:
     r"""Convert MSYS2/Unix-style path to Windows path if needed.
-    
+
     In MSYS2 environments, paths like /tmp/wordlist.txt need to be
     converted to Windows paths (C:\Users\...) for Windows-native subprocesses.
     """
     if not path:
         return path
-    
+
     # Check if it's an MSYS2-style path (starts with / and contains /tmp, /home, etc.)
     if path.startswith('/'):
         # Try to detect if this is an MSYS2 path that needs conversion
@@ -44,7 +44,7 @@ def _convert_msys_path(path: str) -> str:
                 return result.stdout.strip()
         except Exception:
             pass
-        
+
         # Manual conversion for common patterns
         if path.startswith('/tmp/'):
             # /tmp maps to the user's temp directory
@@ -62,7 +62,7 @@ def _convert_msys_path(path: str) -> str:
         elif path.startswith('/c/') or path.startswith('/C/'):
             # /c/... style MSYS2 paths to C:\...
             return 'C:\\' + path[3:].replace('/', '\\')
-    
+
     return path
 
 
@@ -71,28 +71,28 @@ class GobusterResult:
     """Structured gobuster scan result"""
     target: str
     mode: str
-    found: List[Dict[str, Any]]
-    status_codes: Dict[int, int]
+    found: list[dict[str, Any]]
+    status_codes: dict[int, int]
     execution_time_seconds: float
     tool_version: str
     wordlist: str
-    errors: List[str]
+    errors: list[str]
 
 
 class GobusterTool:
     """Gobuster tool integration for Sentinel-X"""
-    
+
     def __init__(self):
         self.name = "gobuster"
         self.supported_modes = ["dir", "dns", "vhost"]
-        self.version_cache: Optional[str] = None
-        self._path_cache: Optional[str] = None
-        
-    def _get_gobuster_path(self) -> Optional[str]:
+        self.version_cache: str | None = None
+        self._path_cache: str | None = None
+
+    def _get_gobuster_path(self) -> str | None:
         """Get path to gobuster executable, checking PATH and common Windows locations"""
         if self._path_cache:
             return self._path_cache
-        
+
         # Try finding gobuster in PATH first
         for cmd in ['gobuster', 'gobuster.exe']:
             try:
@@ -107,7 +107,7 @@ class GobusterTool:
                     return cmd
             except Exception:
                 pass
-        
+
         # Check ~/.sentinelx/tools/ first
         sentinelx_path = os.path.join(os.path.expanduser('~/.sentinelx/tools'), 'gobuster')
         if os.path.exists(sentinelx_path):
@@ -117,7 +117,7 @@ class GobusterTool:
         if os.path.exists(sentinelx_path_exe):
             self._path_cache = sentinelx_path_exe
             return sentinelx_path_exe
-        
+
         # Check Windows installation paths
         import os as os_module
         # Try HOME or USERPROFILE environment variables for proper expansion
@@ -133,22 +133,22 @@ class GobusterTool:
             if os_module.path.exists(path):
                 self._path_cache = path
                 return path
-        
+
         return None
 
     def is_available(self) -> bool:
         """Check if gobuster is installed and accessible"""
         return self._get_gobuster_path() is not None
-    
+
     def get_version(self) -> str:
         """Get gobuster version string"""
         if self.version_cache:
             return self.version_cache
-        
+
         gobuster_path = self._get_gobuster_path()
         if not gobuster_path:
             return "unknown"
-            
+
         try:
             result = subprocess.run(
                 [gobuster_path, '--help'],
@@ -170,7 +170,7 @@ class GobusterTool:
         except Exception:
             pass
         return "unknown"
-    
+
     async def scan(
         self,
         target: str,
@@ -181,13 +181,13 @@ class GobusterTool:
         status_codes: str = "200,204,301,302,307,401,403",
         user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         timeout: int = 600,
-        headers: Dict[str, str] = None,
+        headers: dict[str, str] = None,
         exclude_length: int = None,
         delay_ms: int = None
     ) -> GobusterResult:
         """
         Execute a gobuster scan with structured parameters.
-        
+
         Args:
             target: Target URL or domain
             mode: Scan mode (dir, dns, vhost)
@@ -202,14 +202,14 @@ class GobusterTool:
             delay_ms: Delay between requests in milliseconds
         """
         found = []
-        status_codes_count: Dict[int, int] = {}
+        status_codes_count: dict[int, int] = {}
         errors = []
         start_time = datetime.now()
-        
+
         # Build gobuster command
         gobuster_path = self._get_gobuster_path() or 'gobuster'
         cmd = [gobuster_path, mode]
-        
+
         # Target
         if mode == 'dir':
             cmd.extend(['-u', target])
@@ -217,12 +217,12 @@ class GobusterTool:
             cmd.extend(['-d', target])
         elif mode == 'vhost':
             cmd.extend(['-u', target])
-        
+
         # Wordlist (use default if not specified)
         # Convert MSYS2 paths to Windows paths for Windows-native subprocess
         if wordlist:
             wordlist = _convert_msys_path(wordlist)
-        
+
         if not wordlist:
             wordlist = self._get_default_wordlist()
         if not wordlist:
@@ -237,7 +237,7 @@ class GobusterTool:
                 wordlist="",
                 errors=errors
             )
-        
+
         # Verify wordlist exists
         if not os.path.exists(wordlist):
             errors.append(f"Wordlist file not found: {wordlist}")
@@ -252,57 +252,57 @@ class GobusterTool:
                 errors=errors
             )
         cmd.extend(['-w', wordlist])
-        
+
         # Threads
         cmd.extend(['-t', str(threads)])
-        
+
         # Status codes (for dir mode)
         if mode == 'dir' and status_codes:
             cmd.extend(['-s', status_codes])
-        
+
         # User-Agent
         cmd.extend(['-H', f'User-Agent: {user_agent}'])
-        
+
         # Custom headers
         if headers:
             for key, value in headers.items():
                 cmd.extend(['-H', f'{key}: {value}'])
-        
+
         # Extensions (for dir mode)
         if extensions and mode == 'dir':
             cmd.extend(['-x', extensions])
-        
+
         # Skip SSL verification (for testing)
         if mode == 'dir':
             cmd.append('-k')
-        
+
         # Follow redirects
         if mode == 'dir':
             cmd.append('-f')
-        
+
         # Exclude length
         if exclude_length:
             cmd.extend(['--exclude-length', str(exclude_length)])
-        
+
         # Delay
         if delay_ms:
             cmd.extend(['--delay', f'{delay_ms}ms'])
-        
+
         # Quiet mode (machine parseable)
         cmd.append('-q')
-        
+
         # No progress output
         cmd.append('--no-progress')
-        
+
         # Output will be read from stdout
-        
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(),
@@ -321,26 +321,26 @@ class GobusterTool:
                     wordlist=wordlist,
                     errors=errors
                 )
-            
+
             if proc.returncode not in [0, 1]:  # 0=success, 1=findings, anything else=error
                 error_output = stderr.decode() if stderr else ""
                 if error_output:
                     errors.append(error_output[:500])
-            
+
             # Parse output
             output = stdout.decode()
             found = self._parse_output(output, mode)
-            
+
             # Count status codes
             for item in found:
                 code = item.get('status_code', 0)
                 status_codes_count[code] = status_codes_count.get(code, 0) + 1
-                
+
         except Exception as e:
             errors.append(str(e)[:200])
-        
+
         execution_time = (datetime.now() - start_time).total_seconds()
-        
+
         return GobusterResult(
             target=target,
             mode=mode,
@@ -351,11 +351,11 @@ class GobusterTool:
             wordlist=wordlist,
             errors=errors
         )
-    
-    def _parse_output(self, output: str, mode: str) -> List[Dict[str, Any]]:
+
+    def _parse_output(self, output: str, mode: str) -> list[dict[str, Any]]:
         """Parse gobuster output into structured results"""
         results = []
-        
+
         if mode == 'dir':
             # Gobuster quiet mode output: "Found: /path (Status: 200) [Size: 1234]"
             for line in output.split('\n'):
@@ -364,7 +364,7 @@ class GobusterTool:
                     path_match = re.search(r'Found:\s+(/[^\s(]+)', line)
                     status_match = re.search(r'Status:\s+(\d+)', line)
                     size_match = re.search(r'Size:\s+(\d+)', line)
-                    
+
                     if path_match:
                         results.append({
                             'type': 'endpoint',
@@ -372,7 +372,7 @@ class GobusterTool:
                             'status_code': int(status_match.group(1)) if status_match else 0,
                             'size': int(size_match.group(1)) if size_match else 0
                         })
-                        
+
         elif mode == 'dns':
             # DNS matches: Found: subdomain.domain.com
             for line in output.split('\n'):
@@ -384,24 +384,24 @@ class GobusterTool:
                             'type': 'subdomain',
                             'subdomain': subdomain
                         })
-                        
+
         elif mode == 'vhost':
             # Vhost matches: Found: virtual.host.com (Status: 200)
             for line in output.split('\n'):
                 if line.startswith('Found:'):
                     match = re.search(r'Found:\n*([^\n(]+)', line)
                     status_match = re.search(r'Status:\n*(\\d+)', line)
-                    
+
                     if match:
                         results.append({
                             'type': 'vhost',
                             'vhost': match.group(1).strip(),
                             'status_code': int(status_match.group(1)) if status_match else 0
                         })
-        
+
         return results
-    
-    def _get_default_wordlist(self) -> Optional[str]:
+
+    def _get_default_wordlist(self) -> str | None:
         """Get path to default wordlist, checking common Windows and Linux locations"""
         # Try common wordlist locations based on OS
         if platform.system() == 'Windows' or os.path.exists('C:'):
@@ -417,7 +417,7 @@ class GobusterTool:
             for path in windows_paths:
                 if os.path.exists(path):
                     return path
-        
+
         # Try Linux/Unix paths
         unix_paths = [
             '/usr/share/wordlists/dirb/common.txt',
@@ -428,11 +428,11 @@ class GobusterTool:
         for path in unix_paths:
             if os.path.exists(path):
                 return path
-        
+
         # No wordlist found - return None and let caller handle the error
         return None
-    
-    def get_capabilities(self) -> Dict[str, Any]:
+
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -469,7 +469,7 @@ class GobusterTool:
 
 
 # Global instance for tool registry
-_gobuster_tool: Optional[GobusterTool] = None
+_gobuster_tool: GobusterTool | None = None
 
 
 def get_gobuster_tool() -> GobusterTool:

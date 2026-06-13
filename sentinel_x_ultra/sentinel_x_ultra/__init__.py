@@ -6,28 +6,82 @@ __version__ = "0.1.0"
 # Tools Registry - all tools are accessible via their module getter functions
 # ============================================================================
 
+# Public API: re-exports from submodules
+__all__ = [
+    # Integration
+    "INTEGRATION_PLAN",
+    # Recon tools
+    "SENTINELX_TOOLS_DIR",
+    # Constants
+    "TOOL_REGISTRY",
+    "AgentToolIntegration",
+    "DalfoxTool",
+    # Tool classes
+    "DeserializationResult",
+    "DeserializationTool",
+    "FfufResult",
+    "FfufTool",
+    "GauTool",
+    "GobusterResult",
+    "GobusterTool",
+    "HttpxTool",
+    "HydraResult",
+    "HydraTool",
+    "JohnResult",
+    "JohnTool",
+    "NmapResult",
+    "NmapTool",
+    "NucleiTool",
+    "ReconResult",
+    "ReconnaissanceWorkflow",
+    "SQLMapResult",
+    "SQLMapTool",
+    "SqlifinderTool",
+    "SubEnumTool",
+    "SubFinderTool",
+    "WaybackUrlsTool",
+    "XXEResult",
+    "XXETool",
+    # Functions
+    "get_agent_tool_integration",
+    "get_all_tool_status",
+    "get_deserialization_tool",
+    "get_ffuf_tool",
+    "get_gobuster_tool",
+    "get_hydra_tool",
+    "get_john_tool",
+    "get_nmap_tool",
+    "get_recon_workflow",
+    "get_sqlmap_tool",
+    "get_xxe_tool",
+]
+
+from .deserialization_tool import (
+    DeserializationResult,
+    DeserializationTool,
+    get_deserialization_tool,
+)
+from .ffuf_tool import FfufResult, FfufTool, get_ffuf_tool
+from .gobuster_tool import GobusterResult, GobusterTool, get_gobuster_tool
+from .hydra_tool import HydraResult, HydraTool, get_hydra_tool
+from .john_tool import JohnResult, JohnTool, get_john_tool
+from .nmap_tool import NmapResult, NmapTool, get_nmap_tool
 from .recon_tools import (
-    ReconResult,
-    ReconnaissanceWorkflow,
-    SubFinderTool,
-    SubEnumTool,
-    WaybackUrlsTool,
+    SENTINELX_TOOLS_DIR,
+    DalfoxTool,
     GauTool,
     HttpxTool,
-    DalfoxTool,
-    SqlifinderTool,
     NucleiTool,
-    SENTINELX_TOOLS_DIR,
+    ReconnaissanceWorkflow,
+    ReconResult,
+    SqlifinderTool,
+    SubEnumTool,
+    SubFinderTool,
+    WaybackUrlsTool,
     get_recon_workflow,
 )
-
-from .nmap_tool import NmapTool, NmapResult, get_nmap_tool
-from .ffuf_tool import FfufTool, FfufResult, get_ffuf_tool
-from .gobuster_tool import GobusterTool, GobusterResult, get_gobuster_tool
-from .hydra_tool import HydraTool, HydraResult, get_hydra_tool
-from .sqlmap_tool import SQLMapTool, SQLMapResult, get_sqlmap_tool
-from .xxe_tool import XXETool, XXEResult, get_xxe_tool
-from .deserialization_tool import DeserializationTool, DeserializationResult, get_deserialization_tool
+from .sqlmap_tool import SQLMapResult, SQLMapTool, get_sqlmap_tool
+from .xxe_tool import XXEResult, XXETool, get_xxe_tool
 
 # ============================================================================
 # Collective tool registry
@@ -39,6 +93,7 @@ TOOL_REGISTRY = {
     "ffuf": ("ffuf_tool", "get_ffuf_tool", "FfufTool"),
     "gobuster": ("gobuster_tool", "get_gobuster_tool", "GobusterTool"),
     "hydra": ("hydra_tool", "get_hydra_tool", "HydraTool"),
+    "john": ("john_tool", "get_john_tool", "JohnTool"),
     "sqlmap": ("sqlmap_tool", "get_sqlmap_tool", "SQLMapTool"),
     "xxe": ("xxe_tool", "get_xxe_tool", "XXETool"),
     "deserialization": ("deserialization_tool", "get_deserialization_tool", "DeserializationTool"),
@@ -64,9 +119,11 @@ TOOL_REGISTRY = {
     "tko_subs": ("recon_tools_extended", "get_tko_subs_tool", "TkoSubsTool"),
 }
 
-# Agent-Tool Integration Bridge
-from .agent_tool_integration import AgentToolIntegration, get_agent_tool_integration
-from .agent_tool_integration import INTEGRATION_PLAN
+from .agent_tool_integration import (
+    INTEGRATION_PLAN,
+    AgentToolIntegration,
+    get_agent_tool_integration,
+)
 
 
 def get_all_tool_status() -> dict:

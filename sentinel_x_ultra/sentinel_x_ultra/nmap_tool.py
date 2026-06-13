@@ -12,12 +12,12 @@ Features:
 """
 
 import asyncio
-import subprocess
-import re
 import os
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+import re
+import subprocess
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -25,29 +25,29 @@ class NmapResult:
     """Structured nmap scan result"""
     target: str
     scan_type: str
-    ports: List[Dict[str, Any]]
-    services: List[Dict[str, Any]]
-    os_detection: Optional[Dict[str, Any]]
+    ports: list[dict[str, Any]]
+    services: list[dict[str, Any]]
+    os_detection: dict[str, Any] | None
     execution_time_seconds: float
     tool_version: str
     raw_output: str
-    errors: List[str]
+    errors: list[str]
 
 
 class NmapTool:
     """Nmap tool integration for Sentinel-X"""
-    
+
     def __init__(self):
         self.name = "nmap"
         self.supported_scan_types = ["basic", "syn", "udp", "service", "os", "full"]
-        self.version_cache: Optional[str] = None
-        self._path_cache: Optional[str] = None
-        
-    def _get_nmap_path(self) -> Optional[str]:
+        self.version_cache: str | None = None
+        self._path_cache: str | None = None
+
+    def _get_nmap_path(self) -> str | None:
         """Get nmap executable path, checking common Windows locations"""
         if self._path_cache:
             return self._path_cache
-            
+
         # Check if nmap is in PATH first
         for cmd in ['nmap', 'nmap.exe']:
             try:
@@ -62,34 +62,34 @@ class NmapTool:
                     return cmd
             except Exception:
                 pass
-        
+
         # Check common Windows installation paths
         windows_paths = [
             r'C:\Program Files (x86)\Nmap\nmap.exe',
             r'C:\Program Files\Nmap\nmap.exe',
             os.path.expanduser(r'~\AppData\Local\Programs\Nmap\nmap.exe'),
         ]
-        
+
         for path in windows_paths:
             if os.path.exists(path):
                 self._path_cache = path
                 return path
-        
+
         return None
-    
+
     def is_available(self) -> bool:
         """Check if nmap is installed and accessible"""
         return self._get_nmap_path() is not None
-    
+
     def get_version(self) -> str:
         """Get nmap version string"""
         if self.version_cache:
             return self.version_cache
-            
+
         nmap_cmd = self._get_nmap_path()
         if not nmap_cmd:
             return "unknown"
-            
+
         try:
             result = subprocess.run(
                 [nmap_cmd, '--version'],
@@ -106,7 +106,7 @@ class NmapTool:
         except Exception:
             pass
         return "unknown"
-    
+
     async def scan(
         self,
         target: str,
@@ -120,7 +120,7 @@ class NmapTool:
     ) -> NmapResult:
         """
         Execute an nmap scan with structured parameters.
-        
+
         Args:
             target: Target IP or hostname
             scan_type: Type of scan (basic, syn, udp, service, os, full)
@@ -134,18 +134,18 @@ class NmapTool:
         errors = []
         start_time = datetime.now()
         raw_output = ""
-        
+
         # Build nmap command using full path
         nmap_path = self._get_nmap_path() or 'nmap'
         cmd = [nmap_path]
-        
+
         # Output options
         cmd.extend(['-oX', '-'])  # XML output to stdout
         cmd.append('-v')  # Verbose for now
-        
+
         # Timing
         cmd.append(f'-T{timing}')
-        
+
         # Scan type
         if scan_type == "syn":
             cmd.append('-sS')
@@ -157,33 +157,33 @@ class NmapTool:
             cmd.append('-O')
         elif scan_type == "full":
             cmd.extend(['-sS', '-sV', '-O', '-sC'])
-        
+
         # Custom ports
         if ports:
             cmd.append(f'-p{ports}')
-        
+
         # Scripts
         if scripts:
             cmd.append('-sC')  # Default scripts
-        
+
         # OS detection
         if os_detection:
             cmd.append('-O')
-        
+
         # Service detection
         if service_detection:
             cmd.append('-sV')
-        
+
         # Target
         cmd.append(target)
-        
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(),
@@ -203,22 +203,22 @@ class NmapTool:
                     raw_output="",
                     errors=errors
                 )
-            
+
             if proc.returncode != 0:
                 error_output = stderr.decode() if stderr else ""
                 if error_output:
                     errors.append(error_output[:500])
-            
+
             raw_output = stdout.decode()
-            
+
         except Exception as e:
             errors.append(str(e)[:200])
-        
+
         execution_time = (datetime.now() - start_time).total_seconds()
-        
+
         # Parse output
         ports, services, os_info = self._parse_xml_output(raw_output)
-        
+
         return NmapResult(
             target=target,
             scan_type=scan_type,
@@ -230,20 +230,20 @@ class NmapTool:
             raw_output=raw_output[:5000],  # Limit raw output
             errors=errors
         )
-    
+
     def _parse_xml_output(self, xml_output: str) -> tuple:
         """Parse nmap XML output into structured data"""
         ports = []
         services = []
         os_info = None
-        
+
         if not xml_output:
             return ports, services, os_info
-        
+
         try:
             import xml.etree.ElementTree as ET
             root = ET.fromstring(xml_output)
-            
+
             # Parse ports
             for port in root.iter('port'):
                 port_data = {
@@ -251,7 +251,7 @@ class NmapTool:
                     'port_id': int(port.get('portid', 0)),
                     'state': port.find('state').get('state', 'unknown') if port.find('state') is not None else 'unknown',
                 }
-                
+
                 # Service info
                 service = port.find('service')
                 if service is not None:
@@ -268,9 +268,9 @@ class NmapTool:
                         'product': service.get('product', ''),
                         'version': service.get('version', ''),
                     })
-                
+
                 ports.append(port_data)
-            
+
             # Parse OS info
             osmatch = root.find('.//osmatch')
             if osmatch is not None:
@@ -279,14 +279,14 @@ class NmapTool:
                     'accuracy': osmatch.get('accuracy', ''),
                     'line': osmatch.get('line', ''),
                 }
-                
-        except Exception as e:
+
+        except Exception:
             # XML parsing failed, try text parsing fallback
             pass
-        
+
         return ports, services, os_info
-    
-    def get_capabilities(self) -> Dict[str, Any]:
+
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -319,7 +319,7 @@ class NmapTool:
 
 
 # Global instance for tool registry
-_nmap_tool: Optional[NmapTool] = None
+_nmap_tool: NmapTool | None = None
 
 
 def get_nmap_tool() -> NmapTool:

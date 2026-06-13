@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Literal
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ProviderType(str, Enum):
@@ -112,7 +113,7 @@ class BaseLLMProvider(ABC):
 
     def _extract_usage(self, response_data: dict[str, Any]) -> dict[str, int] | None:
         """Extract token usage from provider response.
-        
+
         Only extracts standard token fields to avoid type mismatches
         when providers return additional timing metrics as floats.
         """

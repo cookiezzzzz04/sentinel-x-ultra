@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-from .providers import ProviderType, ModelConfig, ProviderConfig
+from .providers import ModelConfig, ProviderConfig, ProviderType
 
 
 class ServerConfig(BaseModel):

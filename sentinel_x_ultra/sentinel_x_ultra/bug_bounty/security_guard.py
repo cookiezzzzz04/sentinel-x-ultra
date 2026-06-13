@@ -8,17 +8,15 @@ Provides safety-critical infrastructure for the bug bounty pipeline:
 - ResourceLimiter: Cap resource consumption (findings, targets, API calls)
 """
 
-import re
 import json
-from typing import Any, Dict, List, Optional, Set, Tuple
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
-
+from typing import Any
 
 # ── Ethical Rules ───────────────────────────────────────────────────────────
 
-ETHICAL_RULES: List[Dict[str, Any]] = [
+ETHICAL_RULES: list[dict[str, Any]] = [
     {
         "level": 1,
         "priority": "ABSOLUTE",
@@ -78,7 +76,7 @@ ETHICAL_RULES: List[Dict[str, Any]] = [
 
 # ── PII & Secret Patterns ───────────────────────────────────────────────────
 
-PII_PATTERNS: List[Tuple[str, str]] = [
+PII_PATTERNS: list[tuple[str, str]] = [
     (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', "EMAIL"),
     (r'\b(?:\+?1[-.]?)?\(?[0-9]{3}\)?[-.]?[0-9]{3}[-.]?[0-9]{4}\b', "PHONE"),
     (r'\b\d{3}-\d{2}-\d{4}\b', "SSN"),
@@ -87,7 +85,7 @@ PII_PATTERNS: List[Tuple[str, str]] = [
     (r'\b[0-9]{9}\b', "NATIONAL_ID"),  # Generic, high false positive
 ]
 
-SECRET_PATTERNS: List[Tuple[str, str]] = [
+SECRET_PATTERNS: list[tuple[str, str]] = [
     (r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)\s*[:=]\s*["\'][A-Za-z0-9_\-]{16,}["\']', "API_KEY"),
     (r'(?i)(?:ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]{36}', "GITHUB_TOKEN"),
     (r'(?i)(?:sk_live_|pk_live_|sk_test_|pk_test_)[A-Za-z0-9]{10,}', "STRIPE_KEY"),
@@ -97,7 +95,7 @@ SECRET_PATTERNS: List[Tuple[str, str]] = [
     (r'(?i)(?:mongodb\+srv|postgresql|mysql|redis|amqp)://[^\s"]+(?:@)[^\s"]+', "DATABASE_URL"),
 ]
 
-DANGEROUS_PATTERNS: List[Tuple[str, str]] = [
+DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r'(?i)(?:DROP\s+TABLE|DELETE\s+FROM|TRUNCATE\s+)', "DESTRUCTIVE_SQL"),
     (r'(?i)(?:rm\s+-rf|format\s+|mkfs\.)', "DESTRUCTIVE_SHELL"),
     (r'(?i)(?:<script[\s>]|javascript:)', "XSS_PAYLOAD"),
@@ -114,7 +112,7 @@ class ScopeValidationResult:
     reason: str = ""
     validated_at: str = ""
     validation_level: str = "STRICT"  # STRICT, MODERATE, PERMISSIVE
-    matched_rules: List[str] = field(default_factory=list)
+    matched_rules: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -123,7 +121,7 @@ class SanitizationResult:
     original_length: int = 0
     sanitized_length: int = 0
     items_removed: int = 0
-    removed_types: Dict[str, int] = field(default_factory=dict)
+    removed_types: dict[str, int] = field(default_factory=dict)
     sanitized_content: str = ""
 
 
@@ -131,9 +129,9 @@ class SanitizationResult:
 class EthicalCheckResult:
     """Result of an ethical rules check."""
     passed: bool = True
-    violations: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    rules_checked: List[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    rules_checked: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -141,8 +139,8 @@ class ResourceLimitResult:
     """Result of a resource limit check."""
     allowed: bool = True
     reason: str = ""
-    current_usage: Dict[str, int] = field(default_factory=dict)
-    limits: Dict[str, int] = field(default_factory=dict)
+    current_usage: dict[str, int] = field(default_factory=dict)
+    limits: dict[str, int] = field(default_factory=dict)
 
 
 # ── Scope Validator ─────────────────────────────────────────────────────────
@@ -163,11 +161,11 @@ class ScopeValidator:
     """
 
     def __init__(self):
-        self._in_scope: Set[str] = set()
-        self._out_of_scope: Set[str] = set()
-        self._wildcards: List[str] = []
-        self._owned_domains: Set[str] = set()
-        self._third_party_domains: Dict[str, str] = {
+        self._in_scope: set[str] = set()
+        self._out_of_scope: set[str] = set()
+        self._wildcards: list[str] = []
+        self._owned_domains: set[str] = set()
+        self._third_party_domains: dict[str, str] = {
             "s3.amazonaws.com": "AWS S3",
             "cloudfront.net": "AWS CloudFront",
             "akamai.net": "Akamai CDN",
@@ -273,15 +271,15 @@ class ScopeValidator:
             validated_at=now,
         )
 
-    def batch_validate(self, targets: List[str]) -> Dict[str, ScopeValidationResult]:
+    def batch_validate(self, targets: list[str]) -> dict[str, ScopeValidationResult]:
         """Validate multiple targets."""
         return {t: self.validate(t) for t in targets}
 
-    def filter_in_scope(self, targets: List[str]) -> List[str]:
+    def filter_in_scope(self, targets: list[str]) -> list[str]:
         """Return only targets that pass scope validation."""
         return [t for t in targets if self.validate(t).allowed]
 
-    def filter_out_of_scope(self, targets: List[str]) -> List[str]:
+    def filter_out_of_scope(self, targets: list[str]) -> list[str]:
         """Return only targets that fail scope validation."""
         return [t for t in targets if not self.validate(t).allowed]
 
@@ -306,7 +304,7 @@ class OutputSanitizer:
     def __init__(self, mode: str = "MODERATE"):
         self.mode = mode.upper()
         self._redacted_count = 0
-        self._redacted_types: Dict[str, int] = {}
+        self._redacted_types: dict[str, int] = {}
 
     def sanitize_text(self, text: str) -> SanitizationResult:
         """
@@ -322,7 +320,7 @@ class OutputSanitizer:
             )
 
         original = text
-        removed_types: Dict[str, int] = {}
+        removed_types: dict[str, int] = {}
 
         # Always remove dangerous patterns
         for pattern, ptype in DANGEROUS_PATTERNS:
@@ -363,12 +361,12 @@ class OutputSanitizer:
             sanitized_content=text,
         )
 
-    def sanitize_dict(self, data: Dict[str, Any], depth: int = 0) -> Dict[str, Any]:
+    def sanitize_dict(self, data: dict[str, Any], depth: int = 0) -> dict[str, Any]:
         """Recursively sanitize all string values in a dict."""
         if depth > 5:
             return data  # Prevent infinite recursion
 
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for key, value in data.items():
             if isinstance(value, str):
                 sanitized = self.sanitize_text(value)
@@ -383,12 +381,12 @@ class OutputSanitizer:
                 result[key] = value
         return result
 
-    def sanitize_list(self, items: List[Any], depth: int = 0) -> List[Any]:
+    def sanitize_list(self, items: list[Any], depth: int = 0) -> list[Any]:
         """Recursively sanitize all items in a list."""
         if depth > 5:
             return items
 
-        result: List[Any] = []
+        result: list[Any] = []
         for item in items:
             if isinstance(item, str):
                 sanitized = self.sanitize_text(item)
@@ -402,7 +400,7 @@ class OutputSanitizer:
         return result
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
             "total_redacted": self._redacted_count,
@@ -422,11 +420,11 @@ class EthicalGuard:
 
     def __init__(self, fail_on_violation: bool = True):
         self.fail_on_violation = fail_on_violation
-        self._violations: List[Dict[str, Any]] = []
-        self._warnings: List[Dict[str, Any]] = []
+        self._violations: list[dict[str, Any]] = []
+        self._warnings: list[dict[str, Any]] = []
         self._rules = ETHICAL_RULES
 
-    def check_action(self, action: str, target: str, context: Optional[Dict] = None) -> EthicalCheckResult:
+    def check_action(self, action: str, target: str, context: dict | None = None) -> EthicalCheckResult:
         """
         Check if an action against a target passes all ethical rules.
 
@@ -495,7 +493,7 @@ class EthicalGuard:
 
         return result
 
-    def check_finding_before_report(self, finding: Dict[str, Any]) -> EthicalCheckResult:
+    def check_finding_before_report(self, finding: dict[str, Any]) -> EthicalCheckResult:
         """
         Specialized check for findings before they enter a report.
 
@@ -557,11 +555,11 @@ class EthicalGuard:
         )
 
     @property
-    def violation_log(self) -> List[Dict[str, Any]]:
+    def violation_log(self) -> list[dict[str, Any]]:
         return list(self._violations)
 
     @property
-    def warning_log(self) -> List[Dict[str, Any]]:
+    def warning_log(self) -> list[dict[str, Any]]:
         return list(self._warnings)
 
     def reset_logs(self):
@@ -584,22 +582,22 @@ class ResourceLimiter:
     """
 
     def __init__(self):
-        self._limits: Dict[str, int] = {
+        self._limits: dict[str, int] = {
             "max_findings_per_project": 100,
             "max_findings_per_vuln_class": 3,
             "max_targets_per_project": 50,
             "max_api_calls_per_minute": 60,
             "max_report_size_bytes": 1_048_576,  # 1MB
         }
-        self._usage: Dict[str, Dict[str, int]] = {
+        self._usage: dict[str, dict[str, int]] = {
             "findings_by_type": {},
             "targets_seen": {},
             "api_calls": {},
             "report_sizes": {},
         }
-        self._api_call_timestamps: List[float] = []
-        self._project_findings: Dict[str, int] = {}
-        self._project_targets: Dict[str, Set[str]] = {}
+        self._api_call_timestamps: list[float] = []
+        self._project_findings: dict[str, int] = {}
+        self._project_targets: dict[str, set[str]] = {}
 
     def set_limit(self, limit_name: str, value: int):
         """Set a specific resource limit."""
@@ -712,7 +710,7 @@ class ResourceLimiter:
         return ResourceLimitResult(allowed=True)
 
     @property
-    def usage_summary(self) -> Dict[str, Any]:
+    def usage_summary(self) -> dict[str, Any]:
         return {
             "findings_by_type": dict(self._usage["findings_by_type"]),
             "targets_by_project": {k: len(v) for k, v in self._project_targets.items()},
@@ -725,10 +723,10 @@ class ResourceLimiter:
 
 # ── Convenience Factory ─────────────────────────────────────────────────────
 
-_default_scope_validator: Optional[ScopeValidator] = None
-_default_sanitizer: Optional[OutputSanitizer] = None
-_default_ethical_guard: Optional[EthicalGuard] = None
-_default_resource_limiter: Optional[ResourceLimiter] = None
+_default_scope_validator: ScopeValidator | None = None
+_default_sanitizer: OutputSanitizer | None = None
+_default_ethical_guard: EthicalGuard | None = None
+_default_resource_limiter: ResourceLimiter | None = None
 
 
 def get_scope_validator() -> ScopeValidator:

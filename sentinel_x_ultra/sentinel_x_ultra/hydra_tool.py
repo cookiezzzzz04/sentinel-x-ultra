@@ -10,13 +10,12 @@ Features:
 """
 
 import asyncio
-import subprocess
-import re
 import os
-import json
-from typing import Dict, List, Any, Optional
+import re
+import subprocess
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import Any
 
 
 @dataclass
@@ -25,13 +24,13 @@ class HydraResult:
     target: str
     service: str
     attempts: int
-    successes: List[Dict[str, Any]]
+    successes: list[dict[str, Any]]
     execution_time_seconds: float
     tool_version: str
     raw_output: str
-    errors: List[str]
+    errors: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -46,10 +45,10 @@ class HydraTool:
             "smtp", "pop3", "imap", "ldap", "rdp", "vnc", "telnet",
             "snmp", "cisco-enable", "cisco-aaa"
         ]
-        self.version_cache: Optional[str] = None
-        self._path_cache: Optional[str] = None
+        self.version_cache: str | None = None
+        self._path_cache: str | None = None
 
-    def _get_hydra_path(self) -> Optional[str]:
+    def _get_hydra_path(self) -> str | None:
         """Get hydra executable path, checking common locations"""
         if self._path_cache:
             return self._path_cache
@@ -131,13 +130,13 @@ class HydraTool:
         self,
         target: str,
         service: str = "ssh",
-        username: Optional[str] = None,
-        username_file: Optional[str] = None,
-        password_file: Optional[str] = None,
-        port: Optional[int] = None,
+        username: str | None = None,
+        username_file: str | None = None,
+        password_file: str | None = None,
+        port: int | None = None,
         threads: int = 4,
         timeout_sec: int = 600,
-        extra_args: Optional[List[str]] = None,
+        extra_args: list[str] | None = None,
     ) -> HydraResult:
         """
         Execute a Hydra brute force scan.
@@ -252,9 +251,7 @@ class HydraTool:
                 line = line.strip()
                 if '[80]' in line or '[22]' in line or '[21]' in line or '[3306]' in line:
                     continue  # Skip status lines
-                if 'login:' in line.lower() and 'password:' in line.lower():
-                    successes.append(self._parse_success(line))
-                elif 'host:' in line.lower() and ('login:' in line.lower() or 'password:' in line.lower()):
+                if ('login:' in line.lower() and 'password:' in line.lower()) or ('host:' in line.lower() and ('login:' in line.lower() or 'password:' in line.lower())):
                     successes.append(self._parse_success(line))
 
         except Exception as e:
@@ -272,7 +269,7 @@ class HydraTool:
             errors=errors
         )
 
-    def _parse_success(self, line: str) -> Dict[str, Any]:
+    def _parse_success(self, line: str) -> dict[str, Any]:
         """Parse a successful login line from Hydra output"""
         result = {"raw": line, "host": "", "login": "", "password": "", "port": 0}
 
@@ -295,7 +292,7 @@ class HydraTool:
 
         return result
 
-    def get_capabilities(self) -> Dict[str, Any]:
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -327,7 +324,7 @@ class HydraTool:
 
 
 # Global instance for tool registry
-_hydra_tool: Optional[HydraTool] = None
+_hydra_tool: HydraTool | None = None
 
 
 def get_hydra_tool() -> HydraTool:

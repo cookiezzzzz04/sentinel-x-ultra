@@ -1,7 +1,6 @@
-import re
 
 path = 'src/components/CreateProjectWizard.tsx'
-with open(path, 'r', encoding='utf-8') as f:
+with open(path, encoding='utf-8') as f:
     content = f.read()
 
 # Fix: change the array iteration to avoid type narrowing issues

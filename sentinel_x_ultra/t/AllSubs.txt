@@ -1,0 +1,8 @@
+# All Subs - aggregated subdomain list (raw output of subfinder + subenum)
+# Populated by the recon agent. One hostname per line.
+#
+# Example commands (run inside the project folder):
+#   subfinder -dL target.txt -all -recursive -o Subs01.txt
+#   subenum   -l target.txt -u wayback,crt,abuseipdb,bufferover,Findomain,Subfinder,Amass,Assetfinder -o Subs02.txt
+#   cat Subs*.txt | anew | tee AllSubs.txt
+example.com

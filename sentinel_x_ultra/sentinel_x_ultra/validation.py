@@ -36,10 +36,11 @@ reference.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Iterable
+from typing import Any
 
 import structlog
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -161,7 +161,7 @@ class MemoryEngine:
             return None
 
         try:
-            with open(project_file, "r") as f:
+            with open(project_file) as f:
                 data = json.load(f)
             self._current_project = ProjectMemory.from_dict(data)
             logger.info("project_loaded", project_id=project_id)
@@ -199,7 +199,7 @@ class MemoryEngine:
         projects = []
         for project_file in self.storage_path.glob("*.json"):
             try:
-                with open(project_file, "r") as f:
+                with open(project_file) as f:
                     data = json.load(f)
                 projects.append({
                     "project_id": data.get("project_id"),

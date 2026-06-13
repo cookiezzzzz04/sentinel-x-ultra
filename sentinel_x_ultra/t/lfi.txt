@@ -1,0 +1,6 @@
+# lfi.txt - candidate Local File Inclusion URLs (filtered by gf lfi pattern)
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat AliveSubs.txt | gau | uro | gf lfi | tee lfi.txt
+https://example.com/?file=../../../etc/passwd

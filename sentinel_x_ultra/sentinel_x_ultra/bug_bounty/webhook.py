@@ -8,14 +8,13 @@ Provides:
 - Event type definitions
 """
 
+import collections
 import json
 import uuid
-import collections
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone, timedelta
-
+from typing import Any
 
 # ── Event Types ──────────────────────────────────────────────────────────────
 
@@ -35,9 +34,9 @@ class WebhookConfig:
     """Configuration for a webhook endpoint."""
     url: str = ""
     enabled: bool = True
-    events: List[str] = field(default_factory=lambda: list(ALL_EVENTS))
+    events: list[str] = field(default_factory=lambda: list(ALL_EVENTS))
     secret: str = ""  # Optional HMAC secret for payload signing
-    headers: Dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
     max_retries: int = 3
     timeout_seconds: int = 10
     rate_limit_max_per_minute: int = 60  # Max webhooks per minute (sliding window)
@@ -65,12 +64,12 @@ DEFAULT_WEBHOOK_STORAGE = Path.home() / ".sentinel-x" / "webhook_config.json"
 class WebhookManager:
     """Manages webhook configuration and firing for bug bounty policy decisions."""
 
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(self, storage_path: Path | None = None):
         self._config: WebhookConfig = WebhookConfig()
-        self._delivery_log: List[WebhookDelivery] = []
+        self._delivery_log: list[WebhookDelivery] = []
         self._storage_path = storage_path or DEFAULT_WEBHOOK_STORAGE
         # Rate limiting: event_type -> deque of delivery timestamps
-        self._rate_limit_timestamps: Dict[str, collections.deque] = {}
+        self._rate_limit_timestamps: dict[str, collections.deque] = {}
         self._load_config()
 
     # ── Config Management ───────────────────────────────────────────────────
@@ -92,7 +91,7 @@ class WebhookManager:
         self._save_config()
         return self._config
 
-    def set_events(self, events: List[str]) -> WebhookConfig:
+    def set_events(self, events: list[str]) -> WebhookConfig:
         """Set which events trigger the webhook."""
         # Validate events
         valid_events = [e for e in events if e in ALL_EVENTS]
@@ -109,11 +108,11 @@ class WebhookManager:
             and event in self._config.events
         )
 
-    def get_delivery_log(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_delivery_log(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent webhook delivery attempts."""
         return [asdict(d) for d in self._delivery_log[-limit:]]
 
-    def get_rate_limit_stats(self) -> Dict[str, Any]:
+    def get_rate_limit_stats(self) -> dict[str, Any]:
         """Get current rate limit statistics."""
         now = datetime.now(timezone.utc)
         stats = {}
@@ -214,9 +213,9 @@ class WebhookManager:
     async def fire(
         self,
         event: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         force: bool = False,
-    ) -> Optional[WebhookDelivery]:
+    ) -> WebhookDelivery | None:
         """Fire a webhook for the given event with payload.
 
         Args:
@@ -275,8 +274,8 @@ class WebhookManager:
 
         # Add HMAC signature if secret is configured
         if self._config.secret:
-            import hmac
             import hashlib
+            import hmac
             body_bytes = json.dumps(body, separators=(",", ":")).encode("utf-8")
             signature = hmac.new(
                 self._config.secret.encode("utf-8"),
@@ -306,7 +305,7 @@ class WebhookManager:
             except httpx.ConnectError:
                 last_error = f"Connection refused (attempt {attempt + 1}/{self._config.max_retries})"
             except Exception as e:
-                last_error = f"{type(e).__name__}: {str(e)} (attempt {attempt + 1}/{self._config.max_retries})"
+                last_error = f"{type(e).__name__}: {e!s} (attempt {attempt + 1}/{self._config.max_retries})"
 
             if attempt < self._config.max_retries - 1:
                 import asyncio
@@ -336,13 +335,13 @@ class WebhookManager:
         scope_status: str,
         evidence_tier: str,
         impact_status: str,
-        rejection_arguments: List[str],
-        policy_citations: List[str],
+        rejection_arguments: list[str],
+        policy_citations: list[str],
         recommended_next_action: str,
         target: str = "",
         severity: str = "medium",
         **extra,
-    ) -> Optional[WebhookDelivery]:
+    ) -> WebhookDelivery | None:
         """Convenience method to fire a webhook for a policy decision."""
         payload = {
             "finding_title": finding_title,
@@ -369,9 +368,9 @@ class WebhookManager:
     async def fire_pipeline_completed(
         self,
         pipeline_id: str,
-        summary: Dict[str, Any],
-        policy_decisions: List[Dict[str, Any]],
-    ) -> Optional[WebhookDelivery]:
+        summary: dict[str, Any],
+        policy_decisions: list[dict[str, Any]],
+    ) -> WebhookDelivery | None:
         """Convenience method to fire a webhook for pipeline completion."""
         # Summarize decisions
         total = len(policy_decisions)

@@ -25,11 +25,10 @@ Phases:
 """
 
 import re
-import httpx
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Any
 
+import httpx
 
 # ── Constants ───────────────────────────────────────────────────────────────
 
@@ -78,7 +77,7 @@ class ProgramMetadata:
     program_url: str = ""
     program_status: str = "UNKNOWN"  # ACTIVE / PAUSED / PRIVATE / CLOSED / UNKNOWN
     submission_status: str = "UNKNOWN"
-    metadata: Dict[str, EvidenceItem] = field(default_factory=dict)
+    metadata: dict[str, EvidenceItem] = field(default_factory=dict)
 
 
 @dataclass
@@ -90,16 +89,16 @@ class AssetEntry:
     authentication_required: bool = False
     priority_score: int = 0
     confidence: float = 0.0
-    evidence: List[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ScopeAnalysis:
     """Phase 3 output — scope determination for all assets."""
-    in_scope: List[AssetEntry] = field(default_factory=list)
-    out_of_scope: List[AssetEntry] = field(default_factory=list)
-    unclear: List[AssetEntry] = field(default_factory=list)
-    analysis_notes: List[str] = field(default_factory=list)
+    in_scope: list[AssetEntry] = field(default_factory=list)
+    out_of_scope: list[AssetEntry] = field(default_factory=list)
+    unclear: list[AssetEntry] = field(default_factory=list)
+    analysis_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -107,7 +106,7 @@ class VulnClass:
     """Phase 4 output — a vulnerability class with evidence."""
     class_name: str = ""
     confidence: float = 0.0
-    evidence: List[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -116,7 +115,7 @@ class TestingRestriction:
     restriction: str = ""
     severity: str = "PROHIBITED"
     confidence: float = 0.0
-    evidence: List[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -131,11 +130,11 @@ class SafeHarborInfo:
 @dataclass
 class RewardStructure:
     """Phase 7 output — reward/bounty intelligence."""
-    minimum_reward: Optional[float] = None
-    maximum_reward: Optional[float] = None
-    reward_ranges: List[Dict[str, Any]] = field(default_factory=list)
+    minimum_reward: float | None = None
+    maximum_reward: float | None = None
+    reward_ranges: list[dict[str, Any]] = field(default_factory=list)
     reward_currency: str = "USD"
-    severity_mapping: Dict[str, float] = field(default_factory=dict)
+    severity_mapping: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -147,7 +146,7 @@ class ProgramMaturity:
     scope_clarity: str = "UNKNOWN"
     policy_clarity: str = "UNKNOWN"
     reward_maturity: str = "UNKNOWN"
-    reasoning: List[str] = field(default_factory=list)
+    reasoning: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -155,7 +154,7 @@ class Contradiction:
     """Phase 9 output — detected contradiction."""
     contradiction_type: str = ""
     description: str = ""
-    affected_fields: List[str] = field(default_factory=list)
+    affected_fields: list[str] = field(default_factory=list)
     severity: str = "medium"
     confidence: float = 0.0
 
@@ -171,13 +170,13 @@ class UncertaintyItem:
 @dataclass
 class DownstreamGuidance:
     """Phase 13 output — guidance for downstream agents."""
-    priority_assets: List[str] = field(default_factory=list)
-    priority_bug_classes: List[str] = field(default_factory=list)
-    restricted_actions: List[str] = field(default_factory=list)
+    priority_assets: list[str] = field(default_factory=list)
+    priority_bug_classes: list[str] = field(default_factory=list)
+    restricted_actions: list[str] = field(default_factory=list)
     scanner_aggressiveness: str = "MEDIUM"
     validation_strictness: str = "MEDIUM"
-    known_rejection_patterns: List[str] = field(default_factory=list)
-    policy_focus_areas: List[str] = field(default_factory=list)
+    known_rejection_patterns: list[str] = field(default_factory=list)
+    policy_focus_areas: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -205,36 +204,36 @@ class ProgramIntelligence:
     active_hackers: int = 0
     reports_accepted: int = 0
     reports_rejected: int = 0
-    in_scope_domains: List[str] = field(default_factory=list)
-    out_of_scope_domains: List[str] = field(default_factory=list)
-    accepted_vuln_types: List[str] = field(default_factory=list)
-    rejected_vuln_types: List[str] = field(default_factory=list)
-    testing_restrictions: List[str] = field(default_factory=list)
-    reward_tiers: Dict[str, float] = field(default_factory=dict)
+    in_scope_domains: list[str] = field(default_factory=list)
+    out_of_scope_domains: list[str] = field(default_factory=list)
+    accepted_vuln_types: list[str] = field(default_factory=list)
+    rejected_vuln_types: list[str] = field(default_factory=list)
+    testing_restrictions: list[str] = field(default_factory=list)
+    reward_tiers: dict[str, float] = field(default_factory=dict)
     safe_harbor: bool = True
-    compliance_requirements: List[str] = field(default_factory=list)
+    compliance_requirements: list[str] = field(default_factory=list)
     raw_content: str = ""
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     # ── New 14-phase intelligence fields ──
-    program_metadata: Optional[ProgramMetadata] = None
-    assets: List[AssetEntry] = field(default_factory=list)
-    scope_analysis: Optional[ScopeAnalysis] = None
-    accepted_vulnerability_classes: List[VulnClass] = field(default_factory=list)
-    rejected_vulnerability_classes: List[VulnClass] = field(default_factory=list)
-    restriction_details: List[TestingRestriction] = field(default_factory=list)
-    safe_harbor_info: Optional[SafeHarborInfo] = None
-    reward_structure: Optional[RewardStructure] = None
-    program_maturity_detail: Optional[ProgramMaturity] = None
-    contradictions: List[Contradiction] = field(default_factory=list)
-    uncertainties: List[UncertaintyItem] = field(default_factory=list)
-    asset_prioritization: Dict[str, int] = field(default_factory=dict)
-    recommended_focus_areas: List[str] = field(default_factory=list)
-    deprioritized_categories: List[str] = field(default_factory=list)
-    downstream_guidance: Optional[DownstreamGuidance] = None
-    confidence_scores: Dict[str, float] = field(default_factory=dict)
-    supporting_evidence: Dict[str, List[str]] = field(default_factory=dict)
-    phases_run: List[str] = field(default_factory=list)
+    program_metadata: ProgramMetadata | None = None
+    assets: list[AssetEntry] = field(default_factory=list)
+    scope_analysis: ScopeAnalysis | None = None
+    accepted_vulnerability_classes: list[VulnClass] = field(default_factory=list)
+    rejected_vulnerability_classes: list[VulnClass] = field(default_factory=list)
+    restriction_details: list[TestingRestriction] = field(default_factory=list)
+    safe_harbor_info: SafeHarborInfo | None = None
+    reward_structure: RewardStructure | None = None
+    program_maturity_detail: ProgramMaturity | None = None
+    contradictions: list[Contradiction] = field(default_factory=list)
+    uncertainties: list[UncertaintyItem] = field(default_factory=list)
+    asset_prioritization: dict[str, int] = field(default_factory=dict)
+    recommended_focus_areas: list[str] = field(default_factory=list)
+    deprioritized_categories: list[str] = field(default_factory=list)
+    downstream_guidance: DownstreamGuidance | None = None
+    confidence_scores: dict[str, float] = field(default_factory=dict)
+    supporting_evidence: dict[str, list[str]] = field(default_factory=dict)
+    phases_run: list[str] = field(default_factory=list)
 
 
 # ── URL Parser Agent ────────────────────────────────────────────────────────
@@ -375,7 +374,7 @@ class URLParserAgent:
                 except Exception as e:
                     pi.extraction_status = "PARTIAL"
                     pi.extraction_confidence = "LOW"
-                    pi.errors.append(f"Fetch error: {str(e)}")
+                    pi.errors.append(f"Fetch error: {e!s}")
             else:
                 pi.errors.append("Could not extract program handle")
 
@@ -400,7 +399,7 @@ class URLParserAgent:
                 except Exception as e:
                     pi.extraction_status = "PARTIAL"
                     pi.extraction_confidence = "LOW"
-                    pi.errors.append(f"Fetch error: {str(e)}")
+                    pi.errors.append(f"Fetch error: {e!s}")
             else:
                 pi.errors.append("Could not extract program handle")
 
@@ -478,7 +477,7 @@ class URLParserAgent:
             source="Page content analysis",
         )
 
-    def _extract_hackerone_handle(self, url: str) -> Optional[str]:
+    def _extract_hackerone_handle(self, url: str) -> str | None:
         patterns = [
             r'hackerone\.com/programs/([^/\s?]+)',
             r'hackerone\.com/([^/\s?]+)',
@@ -489,7 +488,7 @@ class URLParserAgent:
                 return m.group(1).lower()
         return None
 
-    def _extract_bugcrowd_handle(self, url: str) -> Optional[str]:
+    def _extract_bugcrowd_handle(self, url: str) -> str | None:
         patterns = [
             r'bugcrowd\.com/programs/([^/\s?]+)',
             r'bugcrowd\.com/bug-bounty-list/([^/\s?]+)',
@@ -512,7 +511,7 @@ class URLParserAgent:
                source_code_repository, cloud_asset, network_range, hardware, other.
         Never merge assets. Keep each independent.
         """
-        assets: List[AssetEntry] = []
+        assets: list[AssetEntry] = []
         seen_identifiers: set = set()
         html = pi.raw_content
 
@@ -554,7 +553,7 @@ class URLParserAgent:
 
         return pi
 
-    def _extract_domain_from_url(self, url: str) -> Optional[str]:
+    def _extract_domain_from_url(self, url: str) -> str | None:
         m = re.search(r'//([^/]+)', url)
         if m:
             domain = m.group(1).lower()
@@ -574,9 +573,9 @@ class URLParserAgent:
         Evidence required. Confidence required. Justification required.
         If scope cannot be verified: mark as UNCLEAR.
         """
-        in_scope: List[AssetEntry] = []
-        out_of_scope: List[AssetEntry] = []
-        unclear: List[AssetEntry] = []
+        in_scope: list[AssetEntry] = []
+        out_of_scope: list[AssetEntry] = []
+        unclear: list[AssetEntry] = []
         html_lower = (pi.raw_content or "").lower()
 
         for asset in pi.assets:
@@ -625,8 +624,8 @@ class URLParserAgent:
         AI-Powered: Uses LLM for advanced policy classification when available.
         Falls back to regex pattern matching.
         """
-        accepted: List[VulnClass] = []
-        rejected: List[VulnClass] = []
+        accepted: list[VulnClass] = []
+        rejected: list[VulnClass] = []
 
         # Try AI-powered policy analysis first
         if self.llm_provider and self.llm_provider.is_available and pi.raw_content:
@@ -698,7 +697,7 @@ class URLParserAgent:
         """
         Identify all restrictions from program content.
         """
-        restrictions: List[TestingRestriction] = []
+        restrictions: list[TestingRestriction] = []
         html_lower = (pi.raw_content or "").lower()
 
         restriction_patterns = [
@@ -718,7 +717,7 @@ class URLParserAgent:
                     restriction=restriction,
                     severity="PROHIBITED",
                     confidence=70.0,
-                    evidence=[f"Found in page content"],
+                    evidence=["Found in page content"],
                 ))
             else:
                 restrictions.append(TestingRestriction(
@@ -900,7 +899,7 @@ class URLParserAgent:
         AI-Powered: Uses LLM for advanced contradiction detection.
         Falls back to pattern matching.
         """
-        contradictions: List[Contradiction] = []
+        contradictions: list[Contradiction] = []
 
         # Try AI-powered contradiction detection
         if self.llm_provider and self.llm_provider.is_available and pi.raw_content:
@@ -961,7 +960,7 @@ class URLParserAgent:
         Identify: missing information, ambiguous wording, conflicting statements,
         low confidence extractions.
         """
-        uncertainties: List[UncertaintyItem] = []
+        uncertainties: list[UncertaintyItem] = []
 
         # Assets with low confidence
         for asset in pi.assets:
@@ -1001,7 +1000,7 @@ class URLParserAgent:
         Consider: business criticality, attack surface, reward potential,
         authentication boundaries, data sensitivity.
         """
-        prioritization: Dict[str, int] = {}
+        prioritization: dict[str, int] = {}
 
         for asset in pi.assets:
             score = 50  # Baseline
@@ -1035,8 +1034,8 @@ class URLParserAgent:
         Generate recommended focus areas and deprioritized categories.
         Only recommend categories supported by program evidence.
         """
-        focus: List[str] = []
-        deprioritized: List[str] = []
+        focus: list[str] = []
+        deprioritized: list[str] = []
 
         # Focus on accepted vulnerability classes
         for vc in pi.accepted_vulnerability_classes:
@@ -1129,8 +1128,8 @@ class URLParserAgent:
         If evidence cannot be identified: replace with UNKNOWN.
         Never fabricate assets, rewards, policies, restrictions, scope, or vuln classes.
         """
-        confidence_scores: Dict[str, float] = {}
-        supporting_evidence: Dict[str, List[str]] = {}
+        confidence_scores: dict[str, float] = {}
+        supporting_evidence: dict[str, list[str]] = {}
 
         # Phase 1: Program metadata
         if pi.platform:

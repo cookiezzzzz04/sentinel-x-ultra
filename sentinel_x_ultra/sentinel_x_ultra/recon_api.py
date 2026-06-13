@@ -5,33 +5,26 @@ This module adds API endpoints for the reconnaissance tools following
 the bug bounty methodology guide. It integrates with the FastAPI server.
 """
 
-from fastapi import APIRouter, HTTPException
+from typing import Any
+
+from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
-import asyncio
+
+from .deserialization_tool import get_deserialization_tool
+
+# Advanced tools
+from .hydra_tool import get_hydra_tool
+from .john_tool import get_john_tool
 
 # Import reconnaissance tools
 from .recon_tools import (
+    SENTINELX_TOOLS_DIR,
+    ReconResult,
     get_recon_workflow,
     install_all_tools,
-    SubFinderTool,
-    SubEnumTool,
-    WaybackUrlsTool,
-    GauTool,
-    HttpxTool,
-    DalfoxTool,
-    SqlifinderTool,
-    NucleiTool,
-    ReconResult,
-    SENTINELX_TOOLS_DIR,
 )
-
-# Advanced tools
-from .hydra_tool import HydraTool, HydraResult, get_hydra_tool
-from .sqlmap_tool import SQLMapTool, SQLMapResult, get_sqlmap_tool
-from .xxe_tool import XXETool, XXEResult, get_xxe_tool
-from .deserialization_tool import DeserializationTool, DeserializationResult, get_deserialization_tool
-
+from .sqlmap_tool import get_sqlmap_tool
+from .xxe_tool import get_xxe_tool
 
 # ============================================================================
 # Pydantic Models for API
@@ -39,12 +32,12 @@ from .deserialization_tool import DeserializationTool, DeserializationResult, ge
 
 class ReconRequest(BaseModel):
     target: str
-    phase: Optional[str] = "full"  # "full", "dorking", "subdomains", "urls", "xss", "sqli", "vulnerabilities"
-    options: Optional[Dict[str, Any]] = None
+    phase: str | None = "full"  # "full", "dorking", "subdomains", "urls", "xss", "sqli", "vulnerabilities"
+    options: dict[str, Any] | None = None
 
 
 class ToolInstallRequest(BaseModel):
-    tool: Optional[str] = None  # None means all tools
+    tool: str | None = None  # None means all tools
 
 
 class ToolStatusRequest(BaseModel):
@@ -63,7 +56,7 @@ async def get_recon_status():
     """Get status of all reconnaissance tools."""
     workflow = get_recon_workflow()
     available = workflow.get_available_tools()
-    
+
     return {
         "status": "ok",
         "tools_available": available,
@@ -131,7 +124,7 @@ async def run_recon_scan(req: ReconRequest):
     """Run reconnaissance scan on a target."""
     try:
         workflow = get_recon_workflow()
-        
+
         if req.phase == "full":
             # Run full reconnaissance workflow
             results = await workflow.run_full_recon(req.target)
@@ -279,7 +272,7 @@ async def get_methodology():
     }
 
 
-def _format_recon_result(result: ReconResult, target: str, phase: str) -> Dict[str, Any]:
+def _format_recon_result(result: ReconResult, target: str, phase: str) -> dict[str, Any]:
     """Format a ReconResult for JSON response."""
     return {
         "status": "completed",
@@ -294,18 +287,18 @@ def _format_recon_result(result: ReconResult, target: str, phase: str) -> Dict[s
     }
 
 
-def _combine_results(results: List[ReconResult]) -> ReconResult:
+def _combine_results(results: list[ReconResult]) -> ReconResult:
     """Combine multiple ReconResult objects."""
     combined_findings = []
     combined_errors = []
     total_time = 0
-    
+
     for r in results:
         if r:
             combined_findings.extend(r.findings)
             combined_errors.extend(r.errors)
             total_time += r.execution_time
-    
+
     return ReconResult(
         tool="combined",
         target="multiple",
@@ -322,23 +315,32 @@ def _combine_results(results: List[ReconResult]) -> ReconResult:
 class HydraScanRequest(BaseModel):
     target: str
     service: str = "ssh"
-    username: Optional[str] = None
-    username_file: Optional[str] = None
-    password_file: Optional[str] = None
-    port: Optional[int] = None
+    username: str | None = None
+    username_file: str | None = None
+    password_file: str | None = None
+    port: int | None = None
     threads: int = 4
     timeout_sec: int = 600
 
 
+class JohnCrackRequest(BaseModel):
+    hashes: str
+    hash_type: str = "auto"
+    mode: str = "wordlist"
+    wordlist: str | None = None
+    rules: bool = True
+    timeout_sec: int = 300
+
+
 class SQLMapScanRequest(BaseModel):
     target: str
-    data: Optional[str] = None
-    cookie: Optional[str] = None
+    data: str | None = None
+    cookie: str | None = None
     technique: str = "BEUST"
     level: int = 1
     risk: int = 1
     threads: int = 1
-    dbms: Optional[str] = None
+    dbms: str | None = None
     batch: bool = True
     timeout_sec: int = 600
     enumerate_dbs: bool = False
@@ -350,7 +352,7 @@ class XXEScanRequest(BaseModel):
     method: str = "POST"
     content_type: str = "application/xml"
     timeout_sec: int = 30
-    collaborator_url: Optional[str] = None
+    collaborator_url: str | None = None
 
 
 class DeserializationScanRequest(BaseModel):
@@ -388,19 +390,20 @@ async def list_all_tools():
 async def get_tool_status(tool_name: str):
     """Get status of a specific tool."""
     tool_map = {}
-    from . import TOOL_REGISTRY as _tool_reg
     import importlib as _il
+
+    from . import TOOL_REGISTRY as _tool_reg
     for _name, (_mod, _getter, _cls) in _tool_reg.items():
         try:
             _m = _il.import_module(f".{_mod}", __package__)
             tool_map[_name] = lambda m=_m, g=_getter: getattr(m, g)()
         except Exception:
             pass
-    
+
     getter = tool_map.get(tool_name.lower())
     if not getter:
         return {"status": "error", "error": f"Unknown tool: {tool_name}. Available: {', '.join(tool_map.keys())}"}
-    
+
     try:
         tool = getter()
         return {
@@ -409,6 +412,93 @@ async def get_tool_status(tool_name: str):
             "available": tool.is_available(),
             "version": tool.get_version() if hasattr(tool, "get_version") else "unknown",
             "capabilities": tool.get_capabilities() if hasattr(tool, "get_capabilities") else {},
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/john/crack")
+async def run_john_crack(req: JohnCrackRequest):
+    """Run a John the Ripper hash cracking session."""
+    try:
+        tool = get_john_tool()
+        if not tool.is_available():
+            return {
+                "status": "error",
+                "error": "John the Ripper not installed. Install from: https://www.openwall.com/john/",
+                "install_hint": "Place john/john.exe in ~/.sentinelx/tools/"
+            }
+
+        result = await tool.crack(
+            hashes=req.hashes,
+            hash_type=req.hash_type,
+            mode=req.mode,
+            wordlist=req.wordlist,
+            rules=req.rules,
+            timeout_sec=req.timeout_sec,
+        )
+
+        return {
+            "status": "completed" if not result.errors else "completed_with_errors",
+            "tool": "john",
+            "hash_type": result.hash_type,
+            "mode": result.mode,
+            "cracked": result.cracked,
+            "cracked_count": result.cracked_count,
+            "total_hashes": result.total_hashes,
+            "execution_time_seconds": round(result.execution_time_seconds, 2),
+            "errors": result.errors,
+            "tool_version": result.tool_version,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.post("/john/generate-hash")
+async def generate_john_hash(password: str = "password", hash_type: str = "raw-md5"):
+    """Generate a test hash for John the Ripper."""
+    try:
+        tool = get_john_tool()
+        hash_value = tool.generate_hash(password, hash_type)
+        return {
+            "status": "ok",
+            "tool": "john",
+            "password": password,
+            "hash_type": hash_type,
+            "hash": hash_value,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.get("/john/formats")
+async def list_john_formats():
+    """List available John the Ripper hash formats."""
+    try:
+        tool = get_john_tool()
+        formats = tool.get_available_formats()
+        return {
+            "status": "ok",
+            "tool": "john",
+            "formats_count": len(formats),
+            "formats": formats[:100],
+            "available": tool.is_available(),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@tool_router.get("/john/status")
+async def get_john_status():
+    """Get John the Ripper tool status."""
+    try:
+        tool = get_john_tool()
+        return {
+            "status": "ok",
+            "tool": "john",
+            "available": tool.is_available(),
+            "version": tool.get_version(),
+            "capabilities": tool.get_capabilities(),
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -425,7 +515,7 @@ async def run_hydra_scan(req: HydraScanRequest):
                 "error": "Hydra not installed. Install from: https://github.com/vanhauser-thc/thc-hydra",
                 "install_hint": "Place hydra/hydra.exe in ~/.sentinelx/tools/"
             }
-        
+
         result = await tool.scan(
             target=req.target,
             service=req.service,
@@ -436,7 +526,7 @@ async def run_hydra_scan(req: HydraScanRequest):
             threads=req.threads,
             timeout_sec=req.timeout_sec,
         )
-        
+
         return {
             "status": "completed" if not result.errors else "completed_with_errors",
             "tool": "hydra",
@@ -463,7 +553,7 @@ async def run_sqlmap_scan(req: SQLMapScanRequest):
                 "error": "SQLMap not installed. Install from: https://github.com/sqlmapproject/sqlmap",
                 "install_hint": "Clone to ~/.sentinelx/tools/sqlmap/"
             }
-        
+
         if req.enumerate_dbs:
             result = await tool.enumerate_databases(
                 target=req.target,
@@ -486,7 +576,7 @@ async def run_sqlmap_scan(req: SQLMapScanRequest):
                 batch=req.batch,
                 timeout_sec=req.timeout_sec,
             )
-        
+
         return {
             "status": "completed" if not result.errors else "completed_with_errors",
             "tool": "sqlmap",
@@ -507,7 +597,7 @@ async def run_xxe_scan(req: XXEScanRequest):
     """Run XXE injection test."""
     try:
         tool = get_xxe_tool()
-        
+
         result = await tool.scan(
             target=req.target,
             test_type=req.test_type,
@@ -516,7 +606,7 @@ async def run_xxe_scan(req: XXEScanRequest):
             timeout_sec=req.timeout_sec,
             collaborator_url=req.collaborator_url,
         )
-        
+
         return {
             "status": "completed",
             "tool": "xxe_tool",
@@ -553,7 +643,7 @@ async def run_deserialization_scan(req: DeserializationScanRequest):
     """Run insecure deserialization test."""
     try:
         tool = get_deserialization_tool()
-        
+
         result = await tool.scan(
             target=req.target,
             language=req.language,
@@ -561,7 +651,7 @@ async def run_deserialization_scan(req: DeserializationScanRequest):
             method=req.method,
             timeout_sec=req.timeout_sec,
         )
-        
+
         return {
             "status": "completed",
             "tool": "deserialization_tool",
@@ -602,12 +692,12 @@ async def get_tool_configuration():
     """Get tool configuration from tools.yaml."""
     import os as _os
     from pathlib import Path as _Path
-    
+
     config_paths = [
         _Path(__file__).parent / "config" / "tools.yaml",
         _Path(_os.path.expanduser("~/.sentinelx/tools.yaml")),
     ]
-    
+
     for path in config_paths:
         if path.exists():
             try:
@@ -617,7 +707,7 @@ async def get_tool_configuration():
                 return {"status": "ok", "config": config, "source": str(path)}
             except Exception:
                 pass
-    
+
     return {
         "status": "ok",
         "note": "No tools.yaml found. Using default paths from ~/.sentinelx/tools/",
@@ -641,6 +731,12 @@ async def get_tool_install_guide():
                 "url": "https://github.com/sqlmapproject/sqlmap",
                 "install": "git clone --depth 1 https://github.com/sqlmapproject/sqlmap ~/.sentinelx/tools/sqlmap",
                 "run": "python ~/.sentinelx/tools/sqlmap/sqlmap.py",
+            },
+            "john": {
+                "url": "https://www.openwall.com/john/",
+                "install": "Download Windows binary from openwall.com and place john.exe in ~/.sentinelx/tools/john/run/",
+                "alternative_install": "git clone --depth 1 https://github.com/openwall/john.git ~/.sentinelx/tools/john && cd ~/.sentinelx/tools/john/src && ./configure && make -s",
+                "wordlist": "Place a wordlist at ~/.sentinelx/tools/wordlist.txt",
             },
             "xxe_tool": {
                 "note": "Built-in payload generator. No installation required.",

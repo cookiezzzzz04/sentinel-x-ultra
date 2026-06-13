@@ -1,0 +1,6 @@
+# xss.txt - candidate XSS URLs (filtered by gf xss pattern)
+# Populated by the recon agent. One URL per line.
+#
+# Example command:
+#   cat urls.txt | uro | gf xss > xss.txt
+https://example.com/?q=<script>alert(1)</script>

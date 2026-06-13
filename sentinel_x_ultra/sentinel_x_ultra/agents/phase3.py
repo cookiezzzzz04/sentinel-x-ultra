@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import re
-import uuid
 import importlib
 import importlib.util
 import os
+import re
 import sys
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -368,7 +365,7 @@ class CodeReviewAgent(Phase3Agent):
         """Review code for security issues."""
         code = input_data.get("code", "")
         file_path = input_data.get("file_path", "unknown")
-        language = input_data.get("language", None)
+        language = input_data.get("language")
 
         if not code:
             return {"status": "error", "message": "No code provided"}
@@ -566,8 +563,8 @@ class ThreatModelingAgent(Phase3Agent):
 
     async def analyze_attack_paths(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Discover and analyze attack paths using the knowledge graph."""
-        entry_points = input_data.get("entry_points", None)
-        targets = input_data.get("targets", None)
+        entry_points = input_data.get("entry_points")
+        targets = input_data.get("targets")
         max_depth = input_data.get("max_depth", 5)
 
         # Use the knowledge graph to discover attack paths
@@ -993,9 +990,7 @@ Be creative but realistic about exploitation conditions.
         complexity = "high"
         response_lower = response.lower()
         # Check for affirmative indicators, avoiding false positives like "not exploitable"
-        if "exploitable" in response_lower and "not exploitable" not in response_lower:
-            exploitable = True
-        elif "can be exploited" in response_lower:
+        if ("exploitable" in response_lower and "not exploitable" not in response_lower) or "can be exploited" in response_lower:
             exploitable = True
         # Determine complexity
         if "low complexity" in response_lower or "trivial" in response_lower:
@@ -1076,7 +1071,7 @@ Provide a clear verdict and reasoning.
             return response.content
         except Exception as e:
             logger.error("llm_debate_failed", error=str(e))
-            return f"Error getting LLM response: {str(e)}"
+            return f"Error getting LLM response: {e!s}"
 
 
 # ============ Agent Factory ============

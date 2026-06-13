@@ -11,6 +11,7 @@ import importlib.util
 import os
 import sys
 
+
 def _load_module_by_path(module_name: str, file_path: str):
     """Load a module directly from a file path, bypassing normal import resolution."""
     if module_name in sys.modules:
@@ -52,21 +53,21 @@ def __getattr__(name: str):
     base_mod = sys.modules.get('sentinel_x_ultra.agents._base')
     if base_mod and hasattr(base_mod, name):
         return getattr(base_mod, name)
-    
+
     # Try to load if not yet loaded
     if 'sentinel_x_ultra.agents._base' not in sys.modules:
         _load_module_by_path('sentinel_x_ultra.agents._base', _agents_py_path)
         base_mod = sys.modules.get('sentinel_x_ultra.agents._base')
         if base_mod and hasattr(base_mod, name):
             return getattr(base_mod, name)
-    
+
     raise AttributeError(f"module 'sentinel_x_ultra.agents' has no attribute '{name}'")
 
 __all__ = [
+    "AgentMessage",
+    "AgentType",
     "BaseAgent",
-    "AgentType", 
-    "TaskPayload",
     "MessageBus",
     "MessageType",
-    "AgentMessage",
+    "TaskPayload",
 ]
